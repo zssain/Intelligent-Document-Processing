@@ -1,0 +1,77 @@
+# Firebase / GCP credentials
+*-firebase-adminsdk-*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Backend Data & Storage
+backend/data/
+backend/uploads/
+backend/processed/
+backend/logs/
+*.pdf
+*.txt
+!backend/README.md
+!**/robots.txt
+
+# Build & Dependencies
+node_modules/
+dist/
+build/
+.next/
+.tanstack/
+
+# Database
+*.db
+*.sqlite3
+vectors/
+
+# Temporary & Cache
+temp/
+debug/
+.cache/
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/

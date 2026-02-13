@@ -1,0 +1,205 @@
+{
+    "common": {
+        "search": "Search...",
+        "loading": "Loading...",
+        "error": "An error occurred",
+        "no_data": "No data found",
+        "system_status": "System Status",
+        "optimal": "Optimal",
+        "actions": {
+            "save": "Save",
+            "cancel": "Cancel",
+            "delete": "Delete",
+            "edit": "Edit",
+            "confirm": "Confirm",
+            "more_info": "More info",
+            "ask_ai": "Ask AI Assistant"
+        }
+    },
+    "nav": {
+        "dashboard": "Dashboard",
+        "analytics": "Analytics",
+        "documents": "Documents",
+        "datalake": "Datalake",
+        "chat": "AI Chat",
+        "settings": "Settings"
+    },
+    "sidebar": {
+        "workspace": "Workspace",
+        "all_documents": "All Documents",
+        "upload_new": "Upload New",
+        "all_connectors": "All Connectors",
+        "s3_bucket": "S3 Bucket",
+        "s3_datalake": "S3 Datalake",
+        "sharepoint": "SharePoint",
+        "google_drive": "Google Drive",
+        "direct_upload": "Direct Upload",
+        "ingestion_sources": "Ingestion Sources",
+        "select_destination": "Select a destination from the navigation rail to begin."
+    },
+    "dashboard": {
+        "title": "Clean & Smart IDP Hub",
+        "subtitle": "Streamline Your Document Intelligence Flow",
+        "intelligence_overview": "Intelligence Overview",
+        "real_time_processing": "Real-time document processing and AI insights",
+        "error_title": "Error Loading Dashboard",
+        "error_subtitle": "Please check if the mock data exists and try again.",
+        "search_placeholder": "Ask AI Assistant anything about your documents...",
+        "stats": {
+            "total_documents": "Total Documents",
+            "processed_today": "Processed Today",
+            "avg_confidence": "Avg. Confidence",
+            "active_entities": "Active Entities",
+            "today": "today",
+            "ingested_this_week": "ingested this week",
+            "knowledge_fragments": "Knowledge Fragments",
+            "growth": "growth",
+            "semantic_chunks": "Semantic Chunks Indexed",
+            "intelligence_entities": "Intelligence Entities",
+            "extracted_across": "Extracted across intelligence base"
+        }
+    },
+    "chat": {
+        "ask_anything": "Ask me anything across your",
+        "documents_suffix": "documents",
+        "secure_reasoning": "Our secure AI reasons transparently in multiple languages, referencing your private cloud data in real-time.",
+        "response_language": "AI Response",
+        "lang_en": "English",
+        "lang_ar": "Arabic",
+        "suggestions": {
+            "revenue": "Revenue Analysis",
+            "revenue_desc": "Summarize Q4 revenue growth trends...",
+            "translate": "Translate & Summarize",
+            "translate_desc": "Translate the Dubai contract to English..."
+        }
+    },
+    "documents": {
+        "library": {
+            "title": "Document Library",
+            "subtitle": "Manage and process your document sources with high-precision IDP factory.",
+            "search_placeholder": "Search documents...",
+            "no_documents": "No documents found.",
+            "loading_documents": "Loading your secure documents...",
+            "showing_docs": "Showing {{startRow}}-{{endRow}} of {{totalRows}} documents",
+            "page_of": "Page {{page}} of {{total}}"
+        },
+        "table": {
+            "cols": {
+                "name": "Documents",
+                "source": "Source",
+                "stage": "Current Stage",
+                "confidence": "Confidence",
+                "timestamp": "Timestamp",
+                "language": "Language",
+                "category": "Category",
+                "identification": "Identification"
+            },
+            "stages": {
+                "parsed": "Parsed",
+                "ocr_extraction": "OCR Extraction",
+                "generating_embeddings": "Embeddings",
+                "completed": "Completed",
+                "failed": "Failed",
+                "running": "Running",
+                "chunking": "Chunking"
+            },
+            "categories": {
+                "invoice": "Invoice",
+                "equipment_document": "Equipment",
+                "user_manual": "Manual",
+                "finance": "Finance",
+                "other": "Other"
+            },
+            "actions": {
+                "open_menu": "Open menu",
+                "are_you_sure": "Are you sure? Click to confirm",
+                "deleting": "Deleting...",
+                "delete_selected": "Delete Selected",
+                "delete_now": "Delete Now",
+                "wait_s": "Wait {{seconds}}s",
+                "are_you_sure_countdown": "Are you sure? ({{seconds}}s)",
+                "selected": "selected"
+            }
+        },
+        "filters": {
+            "title": "Filters",
+            "popover_title": "Filter Documents",
+            "reset_all": "Reset All"
+        },
+        "modes": {
+            "title": "Ingestion Mode",
+            "active": "Active",
+            "s3": "S3 Datalake",
+            "s3_desc": "Sync and process PDFs from an S3 bucket. Artifacts saved to S3 processed folder.",
+            "sharepoint": "SharePoint",
+            "sharepoint_desc": "Pull documents from SharePoint via Microsoft Graph API.",
+            "gdrive": "Google Drive",
+            "gdrive_desc": "Ingest PDFs from a Google Drive folder.",
+            "upload": "Direct Upload",
+            "upload_desc": "Upload documents directly for AI extraction and indexing."
+        },
+        "upload": {
+            "title": "Upload Documents",
+            "subtitle": "Prepare your documents for AI extraction and indexing with enhanced recognition settings.",
+            "dropzone": {
+                "title": "Drag and drop documents here",
+                "subtitle": "Support for PDF, DOCX, and XLSX files up to 50MB per document.",
+                "select_files": "Select Files"
+            },
+            "queue": {
+                "title": "Files in Queue ({{count}})",
+                "clear_all": "Clear All",
+                "duplicate": "Duplicate Found (Will Skip)",
+                "success": "Processed Successfully",
+                "failed": "Failed to upload"
+            },
+            "config": {
+                "title": "Processing Settings",
+                "ocr": "Enhanced Recognition",
+                "ocr_desc": "Uses AI to improve text extraction",
+                "handwriting": "Handwriting Support",
+                "handwriting_desc": "Detect and read handwritten notes",
+                "lang_detect": "Language Matching",
+                "lang_detect_desc": "Identify document language automatically",
+                "model": "Extraction Model",
+                "model_placeholder": "Select model",
+                "library": "Add to Library",
+                "library_placeholder": "Select collection",
+                "cost": "Estimated Cost",
+                "cost_desc": "Based on current queue and settings. Final usage may vary slightly."
+            },
+            "actions": {
+                "ready": "Ready to process {{count}} new files",
+                "skipped": "({{count}} skipped)",
+                "process": "Process Documents"
+            }
+        }
+    },
+    "datalake": {
+        "title": "Datalake Connectors",
+        "subtitle": "Connect, browse and sync documents from external data sources into the RAG pipeline.",
+        "connectors": {
+            "s3": "AWS S3",
+            "s3_desc": "Sync PDFs from an S3 bucket prefix.",
+            "sharepoint": "SharePoint",
+            "sharepoint_desc": "Pull documents from a SharePoint document library.",
+            "gdrive": "Google Drive",
+            "gdrive_desc": "Ingest PDFs from a Google Drive folder."
+        },
+        "pdf_files": "PDF files",
+        "sync_now": "Sync Now",
+        "syncing": "Syncing…",
+        "full_resync": "Full Re-sync",
+        "refresh_list": "Refresh",
+        "result_ingested": "ingested",
+        "result_updated": "updated",
+        "result_skipped": "skipped",
+        "result_failed": "failed",
+        "col_name": "File Name",
+        "col_source": "Source",
+        "col_size": "Size",
+        "col_modified": "Last Modified",
+        "list_error": "Failed to load files",
+        "no_files": "No PDF files found in this connector."
+    }
+}

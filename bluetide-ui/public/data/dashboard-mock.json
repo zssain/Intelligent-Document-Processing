@@ -1,0 +1,80 @@
+{
+    "stats": {
+        "totalIntelligenceBase": {
+            "value": 142892,
+            "growth": 1200,
+            "label": "Documents Ingested"
+        },
+        "activePipelines": {
+            "total": 24,
+            "running": 8,
+            "processingRate": "324 GB processed / hr"
+        },
+        "computeSavings": {
+            "value": 4281,
+            "label": "Smart Skip",
+            "reduction": "42% reduction in redundant compute"
+        }
+    },
+    "recentAIInsights": [
+        {
+            "id": "insight-1",
+            "type": "pattern",
+            "title": "Vendor Contract Pattern Detected",
+            "timestamp": "5 minutes ago",
+            "pipeline": "Legal-Ingest-01",
+            "content": "Detected 12 new contracts from EMEA region with non-standard liability clauses. Smart Skip bypassed 48% of duplicate metadata segments.",
+            "status": "HIGH CONFIDENCE",
+            "actions": [
+                "Review Matches",
+                "Ignore"
+            ]
+        },
+        {
+            "id": "insight-2",
+            "type": "anomaly",
+            "title": "Financial Anomalies Identified",
+            "timestamp": "42 minutes ago",
+            "pipeline": "Intelligence Base Scan",
+            "content": "Comparison of Q4 invoices shows a 15% variance in service fees across 3 vendors that were previously categorized as consistent.",
+            "status": "AI VERIFIED",
+            "actions": [
+                "Deep Dive"
+            ]
+        }
+    ],
+    "systemHealth": {
+        "connectors": [
+            {
+                "name": "S3 Connector",
+                "status": "active"
+            },
+            {
+                "name": "SharePoint Site",
+                "status": "active"
+            },
+            {
+                "name": "Legacy SQL",
+                "status": "idle"
+            }
+        ],
+        "vectorDbLatency": 12
+    },
+    "frequentQueries": [
+        {
+            "id": "q1",
+            "label": "Revenue Trends",
+            "subtext": "Show me Q4 vs Q3 growth..."
+        },
+        {
+            "id": "q2",
+            "label": "Legal Compliance",
+            "subtext": "Check GDPR expiry dates..."
+        },
+        {
+            "id": "q3",
+            "label": "Vendor Comparison",
+            "subtext": "Compare Top 5 vendor pricing..."
+        }
+    ]
+}

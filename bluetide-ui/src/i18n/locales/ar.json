@@ -1,0 +1,205 @@
+{
+    "common": {
+        "search": "بحث...",
+        "loading": "جاري التحميل...",
+        "error": "حدث خطأ ما",
+        "no_data": "لم يتم العثور على بيانات",
+        "system_status": "حالة النظام",
+        "optimal": "مثالي",
+        "actions": {
+            "save": "حفظ",
+            "cancel": "إلغاء",
+            "delete": "حذف",
+            "edit": "تعديل",
+            "confirm": "تأكيد",
+            "more_info": "مزيد من المعلومات",
+            "ask_ai": "اسأل مساعد الذكاء الاصطناعي"
+        }
+    },
+    "nav": {
+        "dashboard": "لوحة القيادة",
+        "analytics": "التحليلات",
+        "documents": "المستندات",
+        "datalake": "بحيرة البيانات",
+        "chat": "دردشة الذكاء الاصطناعي",
+        "settings": "الإعدادات"
+    },
+    "sidebar": {
+        "workspace": "مساحة العمل",
+        "all_documents": "جميع المستندات",
+        "upload_new": "تحميل جديد",
+        "all_connectors": "جميع الموصلات",
+        "s3_bucket": "حاوية S3",
+        "s3_datalake": "بحيرة بيانات S3",
+        "sharepoint": "شيربوينت",
+        "google_drive": "جوجل درايف",
+        "direct_upload": "رفع مباشر",
+        "ingestion_sources": "مصادر الاستيعاب",
+        "select_destination": "حدد وجهة من سكة التنقل للبدء."
+    },
+    "dashboard": {
+        "title": "مركز IDP النظيف والذكي",
+        "subtitle": "تبسيط تدفق ذكاء المستندات الخاص بك",
+        "intelligence_overview": "نظرة عامة على الذكاء",
+        "real_time_processing": "معالجة المستندات في الوقت الفعلي ورؤى الذكاء الاصطناعي",
+        "error_title": "خطأ في تحميل لوحة القيادة",
+        "error_subtitle": "يرجى التحقق من وجود البيانات الوهمية والمحاولة مرة أخرى.",
+        "search_placeholder": "اسأل مساعد الذكاء الاصطناعي أي شيء عن مستنداتك...",
+        "stats": {
+            "total_documents": "إجمالي المستندات",
+            "processed_today": "تمت معالجتها اليوم",
+            "avg_confidence": "متوسط الثقة",
+            "active_entities": "الكيانات النشطة",
+            "today": "اليوم",
+            "ingested_this_week": "تم استيعابها هذا الأسبوع",
+            "knowledge_fragments": "شظايا المعرفة",
+            "growth": "نمو",
+            "semantic_chunks": "تم فهرسة الشظايا الدلالية",
+            "intelligence_entities": "كيانات الذكاء",
+            "extracted_across": "تم استخراجها عبر قاعدة الذكاء"
+        }
+    },
+    "chat": {
+        "ask_anything": "اسألني أي شيء عبر",
+        "documents_suffix": "مستنداتك",
+        "secure_reasoning": "يقوم ذكاؤنا الاصطناعي الآمن بالاستنتاج بشفافية بلغات متعددة، مع الرجوع إلى بيانات السحابة الخاصة بك في الوقت الفعلي.",
+        "response_language": "استجابة الذكاء الاصطناعي",
+        "lang_en": "الإنجليزية",
+        "lang_ar": "العربية",
+        "suggestions": {
+            "revenue": "تحليل الإيرادات",
+            "revenue_desc": "تخليص اتجاهات نمو الإيرادات للربع الرابع...",
+            "translate": "الترجمة والتلخيص",
+            "translate_desc": "ترجمة عقد دبي إلى الإنجليزية..."
+        }
+    },
+    "documents": {
+        "library": {
+            "title": "مكتبة المستندات",
+            "subtitle": "إدارة ومعالجة مصادر المستندات الخاصة بك باستخدام مصنع IDP عالي الدقة.",
+            "search_placeholder": "البحث في المستندات...",
+            "no_documents": "لم يتم العثور على مستندات.",
+            "loading_documents": "جاري تحميل مستنداتك الآمنة...",
+            "showing_docs": "عرض {{startRow}}-{{endRow}} من {{totalRows}} مستندات",
+            "page_of": "الصفحة {{page}} من {{total}}"
+        },
+        "table": {
+            "cols": {
+                "name": "المستندات",
+                "source": "المصدر",
+                "stage": "المرحلة الحالية",
+                "confidence": "الثقة",
+                "timestamp": "الطابع الزمني",
+                "language": "اللغة",
+                "category": "الفئة",
+                "identification": "الهوية"
+            },
+            "stages": {
+                "parsed": "تم التحليل",
+                "ocr_extraction": "استخراج OCR",
+                "generating_embeddings": "التضمينات",
+                "completed": "مكتمل",
+                "failed": "فشل",
+                "running": "جاري التشغيل",
+                "chunking": "جاري التقسيم"
+            },
+            "categories": {
+                "invoice": "فاتورة",
+                "equipment_document": "معدات",
+                "user_manual": "دليل",
+                "finance": "مالية",
+                "other": "أخرى"
+            },
+            "actions": {
+                "open_menu": "فتح القائمة",
+                "are_you_sure": "هل أنت متأكد؟ انقر للتأكيد",
+                "deleting": "جاري الحذف...",
+                "delete_selected": "حذف المحدد",
+                "delete_now": "احذف الآن",
+                "wait_s": "انتظر {{seconds}} ثانية",
+                "are_you_sure_countdown": "هل أنت متأكد؟ ({{seconds}} ثانية)",
+                "selected": "محدد"
+            }
+        },
+        "filters": {
+            "title": "الفلاتر",
+            "popover_title": "تصفية المستندات",
+            "reset_all": "إعادة تعيين الكل"
+        },
+        "modes": {
+            "title": "وضع الاستيعاب",
+            "active": "نشط",
+            "s3": "بحيرة بيانات S3",
+            "s3_desc": "مزامنة ومعالجة ملفات PDF من حاوية S3. يتم حفظ النتائج في مجلد S3 المعالج.",
+            "sharepoint": "شيربوينت",
+            "sharepoint_desc": "سحب المستندات من شيربوينت عبر واجهة Microsoft Graph.",
+            "gdrive": "جوجل درايف",
+            "gdrive_desc": "استيعاب ملفات PDF من مجلد جوجل درايف.",
+            "upload": "رفع مباشر",
+            "upload_desc": "رفع المستندات مباشرة للاستخراج والفهرسة بالذكاء الاصطناعي."
+        },
+        "upload": {
+            "title": "تحميل المستندات",
+            "subtitle": "قم بإعداد مستنداتك لاستخراج الذكاء الاصطناعي وفهرستها بإعدادات تعرف محسنة.",
+            "dropzone": {
+                "title": "اسحب وأفلت المستندات هنا",
+                "subtitle": "دعم لملفات PDF و DOCX و XLSX حتى 50 ميجابايت لكل مستند.",
+                "select_files": "حدد الملفات"
+            },
+            "queue": {
+                "title": "الملفات في الانتظار ({{count}})",
+                "clear_all": "مسح الكل",
+                "duplicate": "تم العثور على نسخة مكررة (سوف يتم التخطي)",
+                "success": "تمت المعالجة بنجاح",
+                "failed": "فشل التحميل"
+            },
+            "config": {
+                "title": "إعدادات المعالجة",
+                "ocr": "التعرف المحسن",
+                "ocr_desc": "يستخدم الذكاء الاصطناعي لتحسين استخراج النص",
+                "handwriting": "دعم الكتابة اليدوية",
+                "handwriting_desc": "كشف وقراءة الملاحظات المكتوبة بخط اليد",
+                "lang_detect": "مطابقة اللغة",
+                "lang_detect_desc": "تحديد لغة المستند تلقائيًا",
+                "model": "نموذج الاستخراج",
+                "model_placeholder": "حدد النموذج",
+                "library": "أضف إلى المكتبة",
+                "library_placeholder": "حدد المجموعة",
+                "cost": "التكلفة التقديرية",
+                "cost_desc": "بناءً على الانتظار الحالي والإعدادات. قد يختلف الاستخدام النهائي قليلاً."
+            },
+            "actions": {
+                "ready": "جاهز لمعالجة {{count}} ملفات جديدة",
+                "skipped": "({{count}} تم تخطيها)",
+                "process": "معالجة المستندات"
+            }
+        }
+    },
+    "datalake": {
+        "title": "موصلات بحيرة البيانات",
+        "subtitle": "ربط ومزامنة المستندات من مصادر البيانات الخارجية إلى خط أنابيب RAG.",
+        "connectors": {
+            "s3": "AWS S3",
+            "s3_desc": "مزامنة ملفات PDF من حاوية S3.",
+            "sharepoint": "شيربوينت",
+            "sharepoint_desc": "سحب المستندات من مكتبة مستندات شيربوينت.",
+            "gdrive": "جوجل درايف",
+            "gdrive_desc": "استيعاب ملفات PDF من مجلد جوجل درايف."
+        },
+        "pdf_files": "ملفات PDF",
+        "sync_now": "مزامنة الآن",
+        "syncing": "جارٍ المزامنة…",
+        "full_resync": "إعادة مزامنة كاملة",
+        "refresh_list": "تحديث",
+        "result_ingested": "تم الاستيعاب",
+        "result_updated": "تم التحديث",
+        "result_skipped": "تم التخطي",
+        "result_failed": "فشل",
+        "col_name": "اسم الملف",
+        "col_source": "المصدر",
+        "col_size": "الحجم",
+        "col_modified": "آخر تعديل",
+        "list_error": "فشل تحميل الملفات",
+        "no_files": "لم يتم العثور على ملفات PDF في هذا الموصل."
+    }
+}

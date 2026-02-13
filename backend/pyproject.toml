@@ -1,0 +1,42 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    # Pydantic
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    # Azure OCR
+    "azure-ai-documentintelligence",
+    "azure-core",
+    # Azure Content Understanding
+    "azure-ai-contentunderstanding",
+    # LangChain & OpenAI
+    "langchain>=0.1.0",
+    "langchain-openai>=0.0.5",
+    "langchain-community>=0.0.13",
+    "openai>=1.12.0",
+    "chromadb",
+    # Database
+    "psycopg2-binary>=2.9.9",
+    "pgvector>=0.2.4",
+    "sqlalchemy>=2.0.25",
+    "alembic>=1.13.1",
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "aiofiles>=23.2.1",
+    "python-jose[cryptography]>=3.3.0",
+    "boto3>=1.34.0",
+    "httpx>=0.27.0",
+    # Google Drive
+    "google-api-python-client>=2.100.0",
+    "google-auth>=2.25.0",
+    "google-auth-oauthlib>=1.2.0",
+    # Logging & Monitoring
+    "loguru==0.7.2",
+]
