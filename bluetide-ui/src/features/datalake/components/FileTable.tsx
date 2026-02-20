@@ -7,6 +7,7 @@ import {
   TableRow,
 } from '@/shared/components/ui/table'
 import { Badge } from '@/shared/components/ui/badge'
+import { Checkbox } from '@/shared/components/ui/checkbox'
 import { ExternalLink } from 'lucide-react'
 import { useDatalake } from '../context'
 import type { ConnectorSource } from '../types'
@@ -40,7 +41,16 @@ const SOURCE_BADGE: Record<ConnectorSource, { label: string; cls: string }> = {
 
 export function FileTable() {
   const { t } = useTranslation()
-  const { files, isLoadingFiles, filesError, activeSource } = useDatalake()
+  const {
+    files,
+    isLoadingFiles,
+    filesError,
+    activeSource,
+    selectedIds,
+    toggleSelect,
+    toggleSelectAll,
+    isAllSelected,
+  } = useDatalake()
 
   if (isLoadingFiles) {
     return (
@@ -74,6 +84,13 @@ export function FileTable() {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent border-border/30">
+            <TableHead className="w-10">
+              <Checkbox
+                checked={isAllSelected}
+                onCheckedChange={() => toggleSelectAll()}
+                aria-label="Select all"
+              />
+            </TableHead>
             <TableHead className="font-bold text-[10px] uppercase tracking-widest">
               {t('datalake.col_name')}
             </TableHead>
@@ -92,6 +109,13 @@ export function FileTable() {
         <TableBody>
           {files.map((f) => (
             <TableRow key={f.id} className="group border-border/20 hover:bg-accent/40 transition-colors">
+              <TableCell>
+                <Checkbox
+                  checked={selectedIds.has(f.id)}
+                  onCheckedChange={() => toggleSelect(f.id)}
+                  aria-label={`Select ${f.name}`}
+                />
+              </TableCell>
               <TableCell className="font-medium text-sm max-w-xs truncate">
                 {f.name}
               </TableCell>

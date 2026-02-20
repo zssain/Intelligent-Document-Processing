@@ -20,21 +20,24 @@ export interface ConnectorInfo {
 // List response shapes (from backend)
 // ---------------------------------------------------------------------------
 
-export interface S3PdfItem {
+export interface S3FileItem {
   key: string
   size: number
   last_modified: string
   etag: string
 }
 
+/** @deprecated Use S3FileItem */
+export type S3PdfItem = S3FileItem
+
 export interface S3ListResponse {
   prefix: string
   total_objects: number
-  total_pdfs: number
-  pdfs: S3PdfItem[]
+  total_files: number
+  files: S3FileItem[]
 }
 
-export interface SharePointPdfItem {
+export interface SharePointFileItem {
   name: string
   item_id: string
   webUrl: string
@@ -43,15 +46,18 @@ export interface SharePointPdfItem {
   eTag: string
 }
 
+/** @deprecated Use SharePointFileItem */
+export type SharePointPdfItem = SharePointFileItem
+
 export interface SharePointListResponse {
   folder_path: string
   drive_id: string
   total_items: number
-  total_pdfs: number
-  pdfs: SharePointPdfItem[]
+  total_files: number
+  files: SharePointFileItem[]
 }
 
-export interface GDrivePdfItem {
+export interface GDriveFileItem {
   name: string
   file_id: string
   webViewLink: string
@@ -61,10 +67,13 @@ export interface GDrivePdfItem {
   version: string
 }
 
+/** @deprecated Use GDriveFileItem */
+export type GDrivePdfItem = GDriveFileItem
+
 export interface GDriveListResponse {
   folder_id: string
-  total_pdfs: number
-  pdfs: GDrivePdfItem[]
+  total_files: number
+  files: GDriveFileItem[]
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +82,7 @@ export interface GDriveListResponse {
 
 export interface SyncResponse {
   status: 'completed'
-  total_pdfs: number
+  total_files: number
   ingested: number
   updated: number
   skipped: number
@@ -114,4 +123,37 @@ export interface ConnectorStatus {
   lastSync?: string
   totalFiles?: number
   message?: string
+}
+
+// ---------------------------------------------------------------------------
+// Source Connections (paste-a-link flow)
+// ---------------------------------------------------------------------------
+
+export interface SourceFileInfo {
+  file_id: string
+  name: string
+  mime_type?: string | null
+  size?: number | null
+  modified_at?: string | null
+  web_url?: string | null
+}
+
+export interface SourceConnection {
+  connection_id: string
+  provider: 'gdrive' | 'sharepoint'
+  label: string
+  folder_id?: string | null
+  site_hostname?: string | null
+  site_path?: string | null
+  item_path?: string | null
+  original_url: string
+  status: 'connected' | 'error'
+  error_message?: string | null
+  file_count: number
+  connected_at: string
+}
+
+export interface ConnectLinkResponse {
+  connection: SourceConnection
+  files: SourceFileInfo[]
 }

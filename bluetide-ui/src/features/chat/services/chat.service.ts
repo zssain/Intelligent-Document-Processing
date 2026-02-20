@@ -1,14 +1,5 @@
-import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-
-const api = axios.create({
-    baseURL: API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`,
-    timeout: 30000,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-})
+import api from '@/shared/lib/api'
+import { auth } from '@/shared/lib/firebase'
 
 export interface QueryRequest {
     question: string
@@ -56,11 +47,20 @@ export const chatService = {
      * Query the RAG system with streaming
      */
     streamQuery: async function* (params: QueryRequest) {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        }
+        
+        // Attach auth token if user is authenticated
+        const currentUser = auth.currentUser
+        if (currentUser) {
+            const idToken = await currentUser.getIdToken()
+            headers['Authorization'] = `Bearer ${idToken}`
+        }
+        
         const response = await fetch(`${api.defaults.baseURL}rag/query/stream`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers,
             body: JSON.stringify(params),
         })
 

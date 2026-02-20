@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper functions ────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function belongsToTenant(tenantId) {
+      return isAuthenticated() &&
+             request.auth.token.tenant_id == tenantId;
+    }
+
+    function isOrgAdmin(tenantId) {
+      return belongsToTenant(tenantId) &&
+             request.auth.token.role == 'org_admin';
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() &&
+             request.auth.uid == uid;
+    }
+
+    // ─── Tenant root ─────────────────────────────────────────────────
+    match /tenants/{tenantId} {
+      allow read:  if belongsToTenant(tenantId);
+      allow write: if isOrgAdmin(tenantId);
+
+      // ── users/{uid} ──────────────────────────────────────────────
+      // User can read own doc.  Only org_admin can list / create /
+      // update / delete.
+      match /users/{uid} {
+        allow read: if belongsToTenant(tenantId) &&
+                       (isOwner(uid) || isOrgAdmin(tenantId));
+
+        allow list:            if isOrgAdmin(tenantId);
+        allow create, delete:  if isOrgAdmin(tenantId);
+        allow update:          if isOrgAdmin(tenantId);
+      }
+
+      // ── documents/{docId} ────────────────────────────────────────
+      // Write:  org_admin only.
+      // Read:   org_admin sees all;
+      //         users see if classification_level <= their clearance
+      //         AND deleted_at == null.
+      //         (Category overlap is enforced server-side because
+      //         Firestore rules cannot do array-intersection checks.)
+      match /documents/{docId} {
+        allow write: if isOrgAdmin(tenantId);
+
+        allow read:  if isOrgAdmin(tenantId) ||
+                        (belongsToTenant(tenantId) &&
+                         resource.data.classification_level <= request.auth.token.clearance_level &&
+                         resource.data.deleted_at == null);
+      }
+
+      // ── categories/{catId} ───────────────────────────────────────
+      // Readable by any authenticated tenant member.
+      // Writable only by org_admin.
+      match /categories/{catId} {
+        allow read:  if belongsToTenant(tenantId);
+        allow write: if isOrgAdmin(tenantId);
+      }
+
+      // ── audit_events/{eventId} ───────────────────────────────────
+      // Readable only by org_admin.  No client writes (Admin SDK only).
+      match /audit_events/{eventId} {
+        allow read:  if isOrgAdmin(tenantId);
+        allow write: if false;
+      }
+
+      // ── ingestion_cursors/{key} ──────────────────────────────────
+      // No client reads/writes (Admin SDK only).
+      match /ingestion_cursors/{key} {
+        allow read, write: if false;
+      }
+      // ── user_connections/{uid} ───────────────────────────────
+      // User can read own connection status.
+      // No client writes (Admin SDK only – OAuth callback writes via backend).
+      match /user_connections/{uid} {
+        allow read: if belongsToTenant(tenantId) && isOwner(uid);
+        allow write: if false;
+      }
+
+      // ── ingestion_jobs/{jobId} ──────────────────────────────
+      // User can read own jobs or org_admin can read all.
+      // No client writes (Admin SDK only).
+      match /ingestion_jobs/{jobId} {
+        allow read: if isOrgAdmin(tenantId) ||
+                       (belongsToTenant(tenantId) &&
+                        resource.data.created_by == request.auth.uid);
+        allow write: if false;
+      }
+
+      // ── source_connections/{connId} ─────────────────────────
+      // Tenant members can read all connections.
+      // No client writes (Admin SDK only – backend manages these).
+      match /source_connections/{connId} {
+        allow read: if belongsToTenant(tenantId);
+        allow write: if false;
+      }    }
+
+    // ─── Default: deny all unmatched paths ────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

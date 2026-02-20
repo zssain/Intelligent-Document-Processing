@@ -1,5 +1,3 @@
-print(">>> azure_ocr.py executing <<<")
-
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import HttpResponseError
@@ -9,12 +7,9 @@ import logging
 from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
-print("Azure endpoint:", settings.azure_doc_endpoint)
-
 
 
 class AzureOCRService:
-    print(">>> AzureOCRService defined <<<")
     """Service for extracting invoice data using Azure Document Intelligence."""
     
     def __init__(self):

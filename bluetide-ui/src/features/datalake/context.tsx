@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -36,6 +37,14 @@ interface DatalakeContextValue {
   triggerSync: (opts?: { force?: boolean; full_scan?: boolean; limit?: number }) => void
   isSyncing: boolean
   lastSyncResult: SyncResponse | null
+
+  /** Selection state for multi-select */
+  selectedIds: Set<string>
+  selectedFiles: DatalakeFile[]
+  toggleSelect: (id: string) => void
+  toggleSelectAll: () => void
+  clearSelection: () => void
+  isAllSelected: boolean
 }
 
 const DatalakeContext = createContext<DatalakeContextValue | null>(null)
@@ -45,7 +54,7 @@ const DatalakeContext = createContext<DatalakeContextValue | null>(null)
 // ---------------------------------------------------------------------------
 
 function normaliseS3(data: any): DatalakeFile[] {
-  return (data?.pdfs ?? []).map((p: any) => ({
+  return (data?.files ?? data?.pdfs ?? []).map((p: any) => ({
     id: p.key,
     name: p.key.split('/').pop() || p.key,
     source: 's3' as ConnectorSource,
@@ -56,7 +65,7 @@ function normaliseS3(data: any): DatalakeFile[] {
 }
 
 function normaliseSharePoint(data: any): DatalakeFile[] {
-  return (data?.pdfs ?? []).map((p: any) => ({
+  return (data?.files ?? data?.pdfs ?? []).map((p: any) => ({
     id: p.item_id,
     name: p.name,
     source: 'sharepoint' as ConnectorSource,
@@ -67,7 +76,7 @@ function normaliseSharePoint(data: any): DatalakeFile[] {
 }
 
 function normaliseGDrive(data: any): DatalakeFile[] {
-  return (data?.pdfs ?? []).map((p: any) => ({
+  return (data?.files ?? data?.pdfs ?? []).map((p: any) => ({
     id: p.file_id,
     name: p.name,
     source: 'gdrive' as ConnectorSource,
@@ -127,24 +136,30 @@ export function DatalakeProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
   })
 
+  /** Helper: check if a probe response indicates the connector is actually configured */
+  function isConnectorConfigured(data: any): boolean {
+    // Backend returns 200 with _note when not configured
+    return data != null && !data._note
+  }
+
   const connectorStatuses: ConnectorStatus[] = [
     {
       source: 's3',
-      status: s3Probe.isLoading ? 'syncing' : s3Probe.isError ? 'disconnected' : 'connected',
-      totalFiles: (s3Probe.data as any)?.total_pdfs,
-      message: s3Probe.error ? String(s3Probe.error) : undefined,
+      status: s3Probe.isLoading ? 'syncing' : (s3Probe.isError || !isConnectorConfigured(s3Probe.data)) ? 'disconnected' : 'connected',
+      totalFiles: isConnectorConfigured(s3Probe.data) ? ((s3Probe.data as any)?.total_files ?? (s3Probe.data as any)?.total_pdfs) : undefined,
+      message: s3Probe.isError ? String(s3Probe.error) : (s3Probe.data as any)?._note,
     },
     {
       source: 'sharepoint',
-      status: spProbe.isLoading ? 'syncing' : spProbe.isError ? 'disconnected' : 'connected',
-      totalFiles: (spProbe.data as any)?.total_pdfs,
-      message: spProbe.error ? String(spProbe.error) : undefined,
+      status: spProbe.isLoading ? 'syncing' : (spProbe.isError || !isConnectorConfigured(spProbe.data)) ? 'disconnected' : 'connected',
+      totalFiles: isConnectorConfigured(spProbe.data) ? ((spProbe.data as any)?.total_files ?? (spProbe.data as any)?.total_pdfs) : undefined,
+      message: spProbe.isError ? String(spProbe.error) : (spProbe.data as any)?._note,
     },
     {
       source: 'gdrive',
-      status: gdProbe.isLoading ? 'syncing' : gdProbe.isError ? 'disconnected' : 'connected',
-      totalFiles: (gdProbe.data as any)?.total_pdfs,
-      message: gdProbe.error ? String(gdProbe.error) : undefined,
+      status: gdProbe.isLoading ? 'syncing' : (gdProbe.isError || !isConnectorConfigured(gdProbe.data)) ? 'disconnected' : 'connected',
+      totalFiles: isConnectorConfigured(gdProbe.data) ? ((gdProbe.data as any)?.total_files ?? (gdProbe.data as any)?.total_pdfs) : undefined,
+      message: gdProbe.isError ? String(gdProbe.error) : (gdProbe.data as any)?._note,
     },
   ]
 
@@ -167,11 +182,52 @@ export function DatalakeProvider({ children }: { children: ReactNode }) {
     [syncMutation],
   )
 
+  // ------ Selection state ------
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Clear selection when source changes
+  const setActiveSourceWithClear = useCallback((s: ConnectorSource) => {
+    setActiveSource(s)
+    setSelectedIds(new Set())
+  }, [])
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === files.length && files.length > 0) {
+        return new Set()
+      }
+      return new Set(files.map((f) => f.id))
+    })
+  }, [files])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  const isAllSelected = files.length > 0 && selectedIds.size === files.length
+
+  const selectedFiles = useMemo(
+    () => files.filter((f) => selectedIds.has(f.id)),
+    [files, selectedIds],
+  )
+
   return (
     <DatalakeContext.Provider
       value={{
         activeSource,
-        setActiveSource,
+        setActiveSource: setActiveSourceWithClear,
         files,
         isLoadingFiles,
         filesError: filesError as Error | null,
@@ -180,6 +236,12 @@ export function DatalakeProvider({ children }: { children: ReactNode }) {
         triggerSync,
         isSyncing: syncMutation.isPending,
         lastSyncResult,
+        selectedIds,
+        selectedFiles,
+        toggleSelect,
+        toggleSelectAll,
+        clearSelection,
+        isAllSelected,
       }}
     >
       {children}

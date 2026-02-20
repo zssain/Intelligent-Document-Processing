@@ -1,16 +1,4 @@
-import axios from 'axios'
-
-// API endpoints alignment with backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-if (!API_BASE_URL.endsWith('/')) {
-    // Ensure baseURL ends with / for relative paths to work correctly
-}
-const api = axios.create({
-    baseURL: API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-})
+import api from '@/shared/lib/api'
 
 export interface UploadDocumentParams {
     file: File
@@ -98,9 +86,14 @@ export const documentsService = {
     /**
      * List all processed financial documents.
      * Hits: GET /cu/documents
+     * @param sourceType - Optional source filter (s3, sharepoint, gdrive, local)
      */
-    listDocuments: async () => {
-        const response = await api.get('cu/documents')
+    listDocuments: async (sourceType?: string) => {
+        const params: Record<string, string> = {}
+        if (sourceType) {
+            params.source_type = sourceType
+        }
+        const response = await api.get('cu/documents', { params })
         return response.data
     },
 

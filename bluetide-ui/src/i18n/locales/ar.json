@@ -16,6 +16,17 @@
             "ask_ai": "اسأل مساعد الذكاء الاصطناعي"
         }
     },
+    "login": {
+        "welcome_back": "مرحبا بعودتك",
+        "subtitle": "أدخل بيانات الاعتماد التجريبية للوصول إلى لوحة القيادة",
+        "username": "اسم المستخدم",
+        "password": "كلمة المرور",
+        "sign_in": "تسجيل الدخول",
+        "signing_in": "جاري تسجيل الدخول...",
+        "demo_access": "وصول تجريبي لعرض العميل",
+        "admin_demo": "تجريبي للمسؤول",
+        "viewer_demo": "تجريبي للمشاهد"
+    },
     "nav": {
         "dashboard": "لوحة القيادة",
         "analytics": "التحليلات",
@@ -130,13 +141,50 @@
             "title": "وضع الاستيعاب",
             "active": "نشط",
             "s3": "بحيرة بيانات S3",
-            "s3_desc": "مزامنة ومعالجة ملفات PDF من حاوية S3. يتم حفظ النتائج في مجلد S3 المعالج.",
+            "s3_desc": "مزامنة ومعالجة الملفات من حاوية S3. يتم حفظ النتائج في مجلد S3 المعالج.",
             "sharepoint": "شيربوينت",
             "sharepoint_desc": "سحب المستندات من شيربوينت عبر واجهة Microsoft Graph.",
             "gdrive": "جوجل درايف",
-            "gdrive_desc": "استيعاب ملفات PDF من مجلد جوجل درايف.",
+            "gdrive_desc": "استيعاب الملفات من مجلد جوجل درايف.",
             "upload": "رفع مباشر",
             "upload_desc": "رفع المستندات مباشرة للاستخراج والفهرسة بالذكاء الاصطناعي."
+        },
+        "connection": {
+            "connected": "{{provider}} متصل",
+            "not_connected": "{{provider}} غير متصل",
+            "connect": "اتصال",
+            "disconnect": "قطع الاتصال",
+            "disconnecting": "جاري قطع الاتصال…"
+        },
+        "sources": {
+            "connect_title": "الاتصال عبر رابط",
+            "connect_description": "الصق رابط مجلد Google Drive أو SharePoint. سنتحقق من الوصول ونعرض الملفات للمعالجة.",
+            "url_label": "رابط المجلد",
+            "label_field": "التسمية (اختياري)",
+            "label_placeholder": "مثال: مستندات الموارد البشرية",
+            "connect_btn": "اتصال وعرض الملفات",
+            "verifying": "جاري التحقق…",
+            "connect_error": "فشل الاتصال. تحقق من الرابط وحاول مرة أخرى.",
+            "connect_success": "تم الاتصال! تم العثور على {{count}} ملفات.",
+            "unsupported_url": "رابط غير مدعوم",
+            "connected_title": "المصادر المرتبطة",
+            "file_count": "{{count}} ملفات",
+            "loading": "جاري تحميل الاتصالات…",
+            "browse": "تصفح الملفات",
+            "no_connections": "لا توجد مصادر مرتبطة بعد"
+        },
+        "jobs": {
+            "process_selected": "معالجة المحدد ({{count}})",
+            "processing": "جاري المعالجة…",
+            "select_files": "اختر الملفات للمعالجة",
+            "no_selection": "لم يتم تحديد ملفات",
+            "tracker_title": "مهمة المعالجة",
+            "status_queued": "في الانتظار",
+            "status_running": "قيد التشغيل",
+            "status_completed": "مكتمل",
+            "status_failed": "فشل",
+            "progress": "{{completed}} من {{total}} ملفات تمت معالجتها",
+            "dismiss": "إغلاق"
         },
         "upload": {
             "title": "تحميل المستندات",
@@ -186,7 +234,7 @@
             "gdrive": "جوجل درايف",
             "gdrive_desc": "استيعاب ملفات PDF من مجلد جوجل درايف."
         },
-        "pdf_files": "ملفات PDF",
+        "pdf_files": "ملفات",
         "sync_now": "مزامنة الآن",
         "syncing": "جارٍ المزامنة…",
         "full_resync": "إعادة مزامنة كاملة",
@@ -200,6 +248,6 @@
         "col_size": "الحجم",
         "col_modified": "آخر تعديل",
         "list_error": "فشل تحميل الملفات",
-        "no_files": "لم يتم العثور على ملفات PDF في هذا الموصل."
+        "no_files": "لم يتم العثور على ملفات في هذا الموصل."
     }
 }

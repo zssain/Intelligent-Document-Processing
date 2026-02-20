@@ -40,6 +40,8 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+*.log
+client_secret_*.json
 
 # Environment variables
 .env

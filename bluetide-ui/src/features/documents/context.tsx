@@ -48,9 +48,14 @@ interface DocumentProviderProps {
 }
 
 export function DocumentProvider({ children }: DocumentProviderProps) {
+    const { activeMode, isConnectorMode } = useIngestionMode()
+
+    // Map ingestion mode to the source_type query param the backend expects
+    const sourceType = isConnectorMode ? activeMode : 'local'
+
     const { data: backendData, isLoading } = useQuery({
-        queryKey: ['documents'],
-        queryFn: () => documentsService.listDocuments(),
+        queryKey: ['documents', sourceType],
+        queryFn: () => documentsService.listDocuments(sourceType),
     })
 
     const [filters, setFilters] = useState<DocumentFilters>({})
@@ -81,8 +86,6 @@ export function DocumentProvider({ children }: DocumentProviderProps) {
         await bulkDeleteMutation.mutateAsync(ids)
     }
 
-    const { activeMode, isConnectorMode } = useIngestionMode()
-
     const documents = useMemo(() => {
         if (!backendData?.documents) return []
 
@@ -99,37 +102,50 @@ export function DocumentProvider({ children }: DocumentProviderProps) {
             return 'local'
         }
 
+        /** Normalise the raw document_type string into a clean DocumentCategory. */
+        function normaliseCategory(raw: string | undefined | null): string {
+            if (!raw) return 'other'
+            const lower = raw.toLowerCase().trim()
+            // Exact matches
+            if (lower === 'invoice') return 'invoice'
+            if (lower === 'finance' || lower === 'financial statement' || lower === 'financial report') return 'finance'
+            if (lower === 'equipment_document' || lower === 'equipment document') return 'equipment_document'
+            if (lower === 'user_manual' || lower === 'user manual' || lower === 'manual') return 'user_manual'
+            if (lower === 'contract' || lower === 'agreement') return 'other'
+            if (lower === 'document') return 'other'
+            // Partial matches
+            if (lower.includes('invoice') || lower.includes('tax')) return 'invoice'
+            if (lower.includes('financial') || lower.includes('statement') || lower.includes('report')) return 'finance'
+            if (lower.includes('equipment') || lower.includes('machine')) return 'equipment_document'
+            if (lower.includes('manual') || lower.includes('guide')) return 'user_manual'
+            return 'other'
+        }
+
         let filtered = backendData.documents.map((doc: any): DocumentType => ({
             id: doc.id,
             name: doc.filename || 'Untitled Document',
-            size: 0, // Backend doesn't return size in list yet
+            size: doc.file_size_bytes || 0,
             type: (doc.filename?.split('.').pop() as any) || 'other',
             source: normaliseSource(doc.source),
-            currentStage: 'completed', // Assuming if it's in list, it's processed
+            currentStage: 'completed',
             confidenceStatus: 'completed',
-            confidencePercentage: doc.confidence_percentage ?? 95,
+            confidencePercentage: doc.confidence_percentage ?? 0,
             uploadedAt: new Date(doc.processed_at),
             lastModifiedAt: new Date(doc.processed_at),
-            language: 'english',
-            category: (doc.document_type as any) || 'finance',
+            language: (doc.document_language || 'English').toLowerCase() as any,
+            category: normaliseCategory(doc.document_type) as any,
             fingerprint: doc.id.slice(0, 8),
             uid: doc.id,
             s3Url: doc.s3_url,
-            fileSizeMb: doc.file_size_mb
+            fileSizeMb: doc.file_size_mb,
+            classificationLevel: doc.classification_level ?? 0,
+            categoryIds: doc.category_ids ?? [],
+            deletedAt: null,
+            createdByUid: '',
         }))
 
-        // Auto-filter by active connector mode
-        if (isConnectorMode) {
-            const modeSourceMap: Record<string, DocumentSource> = {
-                s3: 's3',
-                sharepoint: 'sharepoint',
-                gdrive: 'gdrive',
-            }
-            const modeSource = modeSourceMap[activeMode]
-            if (modeSource) {
-                filtered = filtered.filter((doc: DocumentType) => doc.source === modeSource)
-            }
-        }
+        // Source filtering is now handled server-side via source_type query param.
+        // Only client-side text/field filters remain below.
 
         // Apply Search
         if (filters.search) {
@@ -156,7 +172,7 @@ export function DocumentProvider({ children }: DocumentProviderProps) {
         }
 
         return filtered
-    }, [backendData, filters, activeMode, isConnectorMode])
+    }, [backendData, filters])
 
     const resetFilters = () => setFilters({})
 

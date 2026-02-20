@@ -5,24 +5,29 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from src.database.base import SessionLocal
-from src.database.models import Document
+from src.database.models import DocumentChunk
+from src.database.firestore_service import FirestoreService
+from config.settings import DEFAULT_TENANT_ID
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def check_db_documents():
-    """List documents in DB and their S3 status."""
+    """List documents from Firestore and chunk counts from Postgres."""
     db = SessionLocal()
     try:
-        documents = db.query(Document).all()
-        logger.info(f"Found {len(documents)} documents in database")
+        fs = FirestoreService(tenant_id=DEFAULT_TENANT_ID)
+        documents = fs.list_documents(status="active", limit=100)
+        logger.info(f"Found {len(documents)} documents in Firestore")
         
         for doc in documents:
-            logger.info(f"  - {doc.filename} (ID: {doc.id})")
-            logger.info(f"    S3 URL: {doc.s3_url}")
-            logger.info(f"    File Size: {doc.file_size_bytes} bytes")
-            logger.info(f"    Processed At: {doc.processed_at}")
+            doc_id = doc.get("id", "?")
+            chunk_count = db.query(DocumentChunk).filter(
+                DocumentChunk.doc_id == doc_id
+            ).count()
+            logger.info(f"  - {doc.get('title', 'untitled')} (ID: {doc_id})")
+            logger.info(f"    Chunks: {chunk_count}")
             logger.info("-" * 20)
             
         return True

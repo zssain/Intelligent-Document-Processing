@@ -25,6 +25,7 @@ import {
 import { useDocuments } from '../context'
 import { useChat } from '@/features/chat'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/shared/context/auth-context'
 import type { Document as DocumentType } from '@/shared/types/document'
 import { Badge } from '@/shared/components/ui/badge'
 import { Button } from '@/shared/components/ui/button'
@@ -82,8 +83,10 @@ const RowActions = ({ doc }: { doc: DocumentType }) => {
     const { setSelectedDocument, setIsPreviewOpen, deleteDocument, isDeleting } = useDocuments()
     const { startNewSessionWithContext } = useChat()
     const { t } = useTranslation()
+    const { role } = useAuth()
     const navigate = useNavigate()
     const [isConfirming, setIsConfirming] = useState(false)
+    const isAdmin = role === 'org_admin'
 
     return (
         <div className="flex justify-end pr-2">
@@ -118,34 +121,36 @@ const RowActions = ({ doc }: { doc: DocumentType }) => {
                         {t('common.actions.ask_ai')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    {isConfirming ? (
-                        <DropdownMenuItem
-                            onClick={async () => {
-                                try {
-                                    await deleteDocument(doc.id)
-                                    setIsConfirming(false)
-                                } catch (error) {
-                                    console.error('Failed to delete document:', error)
-                                }
-                            }}
-                            disabled={isDeleting}
-                            onSelect={(e) => e.preventDefault()}
-                            className="gap-2 text-rose-500 font-bold focus:text-rose-600 focus:bg-rose-500/10 animate-in fade-in slide-in-from-right-1"
-                        >
-                            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
-                            {isDeleting ? t('documents.table.actions.deleting') : t('documents.table.actions.are_you_sure')}
-                        </DropdownMenuItem>
-                    ) : (
-                        <DropdownMenuItem
-                            onSelect={(e) => {
-                                e.preventDefault()
-                                setIsConfirming(true)
-                            }}
-                            className="gap-2 text-rose-500 focus:text-rose-500 focus:bg-rose-500/10"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                            {t('common.actions.delete')}
-                        </DropdownMenuItem>
+                    {isAdmin && (
+                        isConfirming ? (
+                            <DropdownMenuItem
+                                onClick={async () => {
+                                    try {
+                                        await deleteDocument(doc.id)
+                                        setIsConfirming(false)
+                                    } catch (error) {
+                                        console.error('Failed to delete document:', error)
+                                    }
+                                }}
+                                disabled={isDeleting}
+                                onSelect={(e) => e.preventDefault()}
+                                className="gap-2 text-rose-500 font-bold focus:text-rose-600 focus:bg-rose-500/10 animate-in fade-in slide-in-from-right-1"
+                            >
+                                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
+                                {isDeleting ? t('documents.table.actions.deleting') : t('documents.table.actions.are_you_sure')}
+                            </DropdownMenuItem>
+                        ) : (
+                            <DropdownMenuItem
+                                onSelect={(e) => {
+                                    e.preventDefault()
+                                    setIsConfirming(true)
+                                }}
+                                className="gap-2 text-rose-500 focus:text-rose-500 focus:bg-rose-500/10"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                {t('common.actions.delete')}
+                            </DropdownMenuItem>
+                        )
                     )}
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -157,12 +162,14 @@ export function DocumentTable() {
     const { documents, isLoading, pagination, setPagination, deleteDocumentsBatch, isDeleting } = useDocuments()
     const { startNewSessionWithContext } = useChat()
     const { t } = useTranslation()
+    const { role } = useAuth()
     const navigate = useNavigate()
+    const isAdmin = role === 'org_admin'
 
     const columns = React.useMemo<ColumnDef<DocumentType>[]>(() => [
         {
             id: 'selection',
-            header: ({ table }) => (
+            header: ({ table }) => isAdmin ? (
                 <div className="px-1">
                     <Checkbox
                         checked={table.getIsAllPageRowsSelected()}
@@ -170,8 +177,8 @@ export function DocumentTable() {
                         aria-label="Select all"
                     />
                 </div>
-            ),
-            cell: ({ row }) => (
+            ) : null,
+            cell: ({ row }) => isAdmin ? (
                 <div className="px-1">
                     <Checkbox
                         checked={row.getIsSelected()}
@@ -179,7 +186,7 @@ export function DocumentTable() {
                         aria-label="Select row"
                     />
                 </div>
-            ),
+            ) : null,
             enableSorting: false,
             enableHiding: false,
         },
@@ -228,13 +235,13 @@ export function DocumentTable() {
 
                 const colorClass = isSharePoint ? 'bg-sky-500/10 text-sky-400'
                     : isS3 ? 'bg-amber-500/10 text-amber-400'
-                    : isGDrive ? 'bg-violet-500/10 text-violet-400'
-                    : 'bg-emerald-500/10 text-emerald-400'
+                        : isGDrive ? 'bg-violet-500/10 text-violet-400'
+                            : 'bg-emerald-500/10 text-emerald-400'
 
                 const label = isSharePoint ? 'SharePoint'
                     : isS3 ? 'S3'
-                    : isGDrive ? 'GDrive'
-                    : 'LOCAL'
+                        : isGDrive ? 'GDrive'
+                            : 'LOCAL'
 
                 return (
                     <Badge
@@ -327,9 +334,10 @@ export function DocumentTable() {
             header: t('documents.table.cols.language'),
             cell: ({ row }) => {
                 const lang = row.original.language
+                const displayLang = lang === 'arabic' ? 'عربي (Arabic)' : lang
                 return (
                     <span className="font-medium text-muted-foreground capitalize">
-                        {lang === 'arabic' ? 'عربي' : 'English'}
+                        {displayLang}
                     </span>
                 )
             },
@@ -347,8 +355,8 @@ export function DocumentTable() {
                     other: t('documents.table.categories.other'),
                 }
                 return (
-                    <Badge variant="secondary" className="bg-secondary/50 font-medium text-muted-foreground">
-                        {labels[category]}
+                    <Badge variant="secondary" className="bg-secondary/50 font-medium text-muted-foreground capitalize">
+                        {labels[category] || category}
                     </Badge>
                 )
             },
@@ -376,7 +384,7 @@ export function DocumentTable() {
             id: 'actions',
             cell: ({ row }) => <RowActions doc={row.original} />,
         },
-    ], [t])
+    ], [t, isAdmin])
 
     const [rowSelection, setRowSelection] = useState({})
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
@@ -432,7 +440,7 @@ export function DocumentTable() {
             {/* Bulk Actions Toolbar */}
             <div className={cn(
                 "flex items-center gap-3 py-2 px-4 rounded-lg transition-all duration-300 z-50 relative",
-                hasSelection ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none h-0 py-0 overflow-hidden",
+                hasSelection && isAdmin ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none h-0 py-0 overflow-hidden",
                 isConfirmingDelete ? "bg-rose-500/10 border border-rose-500/20" : "bg-primary/5 border border-primary/10"
             )}>
                 {isConfirmingDelete ? (

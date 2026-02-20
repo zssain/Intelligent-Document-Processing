@@ -1,11 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Document } from '@/features/documents'
 import { Datalake } from '@/features/datalake'
+import { JobTracker } from '@/features/datalake/components/JobTracker'
 import { Hero } from '@/shared/components/layout/Hero'
 import { Files } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useIngestionMode } from '@/features/documents/ingestion-mode-context'
+import { useAuth } from '@/shared/context/auth-context'
 import type { ConnectorSource } from '@/features/datalake/types'
 
 export const Route = createFileRoute('/documents/')({
@@ -15,6 +17,8 @@ export const Route = createFileRoute('/documents/')({
 function DocumentsPage() {
   const { t } = useTranslation()
   const { isConnectorMode } = useIngestionMode()
+  const { role } = useAuth()
+  const isAdmin = role === 'org_admin'
 
   return (
     <Document.Root>
@@ -27,20 +31,25 @@ function DocumentsPage() {
           icon={<Files className="h-6 w-6" />}
         />
 
-        {/* 2. Ingestion Mode Selector */}
-        <Document.ModeSelector />
+        {/* 2. Ingestion Mode Selector — Admin only */}
+        {isAdmin && <Document.ModeSelector />}
 
-        {/* 3. Mode-specific content */}
-        {isConnectorMode ? (
-          /* S3 / SharePoint / Google Drive mode → show connector sync UI */
-          <Datalake.Root>
-            <ConnectorModeContent />
-          </Datalake.Root>
-        ) : (
-          /* Direct Upload mode → show upload form */
-          <div className="space-y-6">
-            <Document.Upload />
-          </div>
+        {/* 2b. OAuth Connection Status (Google Drive / SharePoint) — Admin only */}
+        {isAdmin && <Document.ConnectionStatus />}
+
+        {/* 3. Mode-specific content — Admin only */}
+        {isAdmin && (
+          isConnectorMode ? (
+            /* S3 / SharePoint / Google Drive mode → show connector sync UI */
+            <Datalake.Root>
+              <ConnectorModeContent />
+            </Datalake.Root>
+          ) : (
+            /* Direct Upload mode → show upload form */
+            <div className="space-y-6">
+              <Document.Upload />
+            </div>
+          )
         )}
 
         {/* 4. Universal Document Library (always visible below) */}
@@ -73,6 +82,7 @@ function DocumentsPage() {
 function ConnectorModeContent() {
   const { activeMode } = useIngestionMode()
   const { setActiveSource } = Datalake.useContext()
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
 
   // Keep Datalake context's activeSource in sync with the ingestion mode
   useEffect(() => {
@@ -89,8 +99,14 @@ function ConnectorModeContent() {
 
   return (
     <div className="space-y-4">
+      <Datalake.ConnectLinkDialog />
+      <Datalake.ConnectedSources />
       <Datalake.SyncToolbar />
       <Datalake.FileTable />
+      <Datalake.ProcessBar onJobCreated={setActiveJobId} />
+      {activeJobId && (
+        <JobTracker jobId={activeJobId} onDismiss={() => setActiveJobId(null)} />
+      )}
     </div>
   )
 }

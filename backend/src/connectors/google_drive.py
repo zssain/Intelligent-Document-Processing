@@ -137,45 +137,74 @@ class GoogleDriveClient:
 
     # ── List files in folder ──────────────────────────────────────────────
 
-    def list_folder_pdfs(
+    def list_folder_files(
         self,
         folder_id: str,
         *,
         limit: int = 100,
+        supported_extensions: list[str] | None = None,
+        recursive: bool = True,
     ) -> List[Dict[str, Any]]:
-        """List PDF files directly inside *folder_id*.
+        """List files inside *folder_id*, optionally recursing into subfolders.
 
-        Uses a query filter for ``mimeType='application/pdf'`` and
-        ``trashed=false``.  Handles pagination via ``nextPageToken``.
+        When *supported_extensions* is provided (e.g. ``["pdf", "docx", …]``)
+        only files whose name ends with one of those extensions are returned.
+        Otherwise all non-trashed files are returned.
+
+        When *recursive* is ``True`` (default), subfolders are traversed
+        depth-first so that files nested at any depth are included.
         """
-        q = (
-            f"'{folder_id}' in parents "
-            "and mimeType='application/pdf' "
-            "and trashed=false"
-        )
         items: List[Dict[str, Any]] = []
-        page_token: Optional[str] = None
+        folders_to_scan = [folder_id]
 
-        while len(items) < limit:
-            page_size = min(100, limit - len(items))
-            request = self._service.files().list(
-                q=q,
-                fields=_LIST_FIELDS,
-                pageSize=page_size,
-                pageToken=page_token,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
+        while folders_to_scan and len(items) < limit:
+            current_folder = folders_to_scan.pop(0)
+            q = (
+                f"'{current_folder}' in parents "
+                "and trashed=false"
             )
-            resp = request.execute()
-            items.extend(resp.get("files", []))
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                break
+            page_token: Optional[str] = None
+
+            while len(items) < limit:
+                page_size = min(100, limit - len(items))
+                request = self._service.files().list(
+                    q=q,
+                    fields=_LIST_FIELDS,
+                    pageSize=page_size,
+                    pageToken=page_token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                )
+                resp = request.execute()
+                for f in resp.get("files", []):
+                    mime = f.get("mimeType", "")
+                    # Queue subfolders for recursive scanning
+                    if mime == "application/vnd.google-apps.folder":
+                        if recursive:
+                            folders_to_scan.append(f["id"])
+                            logger.info(
+                                "Queued subfolder '%s' (%s) for recursive scan",
+                                f.get("name", ""), f["id"],
+                            )
+                        continue
+
+                    if supported_extensions:
+                        ext = os.path.splitext(f.get("name", ""))[1].lstrip(".").lower()
+                        if ext not in supported_extensions:
+                            continue
+                    items.append(f)
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
 
         logger.info(
-            "list_folder_pdfs('%s') returned %d items", folder_id, len(items)
+            "list_folder_files('%s', recursive=%s) returned %d items",
+            folder_id, recursive, len(items),
         )
         return items[:limit]
+
+    # Keep backward-compat alias
+    list_folder_pdfs = list_folder_files
 
     # ── Changes (delta) API ───────────────────────────────────────────────
 
@@ -196,6 +225,7 @@ class GoogleDriveClient:
         page_token: Optional[str] = None,
         *,
         max_items: int = 1000,
+        supported_extensions: list[str] | None = None,
     ) -> Tuple[List[Dict[str, Any]], str]:
         """Fetch changed files since *page_token*.
 
@@ -238,11 +268,13 @@ class GoogleDriveClient:
                 file_meta = change.get("file")
                 if not file_meta:
                     continue
-                # Filter: must be PDF, in target folder, not trashed
-                if file_meta.get("mimeType") != "application/pdf":
-                    continue
+                # Filter by supported extensions and target folder
                 if file_meta.get("trashed"):
                     continue
+                if supported_extensions:
+                    ext = os.path.splitext(file_meta.get("name", ""))[1].lstrip(".").lower()
+                    if ext not in supported_extensions:
+                        continue
                 parents = file_meta.get("parents") or []
                 if folder_id not in parents:
                     continue
@@ -262,12 +294,13 @@ class GoogleDriveClient:
 
     # ── Download ──────────────────────────────────────────────────────────
 
-    def download_file(self, file_id: str) -> str:
+    def download_file(self, file_id: str, filename: str = "") -> str:
         """Download a Drive file to a local temp file and return the path.
 
         Caller is responsible for deleting the temp file.
         """
-        fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+        suffix = os.path.splitext(filename)[1] if filename else ".bin"
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix or ".bin")
         os.close(fd)
         try:
             request = self._service.files().get_media(

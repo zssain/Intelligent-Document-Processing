@@ -213,17 +213,21 @@ class GraphClient:
     def list_folder_children(
         self,
         drive_id: str,
-        folder_path: str,
+        folder_path: Optional[str] = None,
         *,
         max_items: int = 1000,
     ) -> List[Dict[str, Any]]:
         """Return all items (files + sub-folders) under *folder_path*.
 
+        If folder_path is None or empty, lists the root of the drive.
         Handles ``@odata.nextLink`` pagination automatically.
         """
-        # Encode the path in the URL: /drives/{id}/root:/{path}:/children
-        encoded = folder_path.replace(" ", "%20")
-        url = f"{GRAPH_BASE}/drives/{drive_id}/root:/{encoded}:/children"
+        if not folder_path or folder_path in (".", "/"):
+            url = f"{GRAPH_BASE}/drives/{drive_id}/root/children"
+        else:
+            # Encode the path in the URL: /drives/{id}/root:/{path}:/children
+            encoded = folder_path.replace(" ", "%20")
+            url = f"{GRAPH_BASE}/drives/{drive_id}/root:/{encoded}:/children"
         items: List[Dict[str, Any]] = []
 
         while url and len(items) < max_items:
@@ -232,9 +236,60 @@ class GraphClient:
             url = data.get("@odata.nextLink")
 
         logger.info(
-            "list_folder_children('%s') returned %d items", folder_path, len(items)
+            "list_folder_children('%s') returned %d items", folder_path or '<root>', len(items)
         )
         return items[:max_items]
+
+    def list_all_files_recursive(
+        self,
+        drive_id: str,
+        folder_path: Optional[str] = None,
+        *,
+        max_files: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        """Recursively list all **files** under *folder_path*, traversing sub-folders.
+
+        Returns only file items (not folders). Respects *max_files* cap.
+        """
+        all_files: List[Dict[str, Any]] = []
+        folders_to_visit: list[Optional[str]] = [folder_path]
+
+        while folders_to_visit and len(all_files) < max_files:
+            current_folder = folders_to_visit.pop(0)
+            try:
+                items = self.list_folder_children(
+                    drive_id, current_folder, max_items=max_files
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Skipping folder '%s' due to error: %s",
+                    current_folder or '<root>', exc,
+                )
+                continue
+
+            for item in items:
+                if len(all_files) >= max_files:
+                    break
+                # Items with a "folder" key are folders; items with "file" key are files
+                if "folder" in item:
+                    # Build the child folder path for recursion
+                    parent = item.get("parentReference", {}).get("path", "")
+                    # parentReference.path looks like /drives/{id}/root: or /drives/{id}/root:/FolderName
+                    # We need the relative path after "root:" or "root:/"
+                    name = item.get("name", "")
+                    if current_folder and current_folder not in (".", "/"):
+                        child_path = f"{current_folder}/{name}"
+                    else:
+                        child_path = name
+                    folders_to_visit.append(child_path)
+                elif "file" in item:
+                    all_files.append(item)
+
+        logger.info(
+            "list_all_files_recursive('%s') found %d files",
+            folder_path or '<root>', len(all_files),
+        )
+        return all_files[:max_files]
 
     # ── Delta query (incremental) ─────────────────────────────────────────
     def delta_query(
@@ -282,7 +337,7 @@ class GraphClient:
         return items[:max_items], new_delta_link
 
     # ── Download ──────────────────────────────────────────────────────────
-    def download_file(self, drive_id: str, item_id: str) -> str:
+    def download_file(self, drive_id: str, item_id: str, filename: str = "") -> str:
         """Download a drive item to a local temp file and return the path.
 
         Caller is responsible for deleting the temp file.
@@ -290,7 +345,8 @@ class GraphClient:
         url = f"{GRAPH_BASE}/drives/{drive_id}/items/{item_id}/content"
         headers = {"Authorization": f"Bearer {self._get_token()}"}
 
-        fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+        suffix = os.path.splitext(filename)[1] if filename else ".bin"
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix or ".bin")
         os.close(fd)
         try:
             with self._http.stream("GET", url, headers=headers, follow_redirects=True) as resp:

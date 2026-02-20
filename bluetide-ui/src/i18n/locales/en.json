@@ -16,6 +16,17 @@
             "ask_ai": "Ask AI Assistant"
         }
     },
+    "login": {
+        "welcome_back": "Welcome Back",
+        "subtitle": "Enter your demo credentials to access the dashboard",
+        "username": "Username",
+        "password": "Password",
+        "sign_in": "Sign In",
+        "signing_in": "Signing in...",
+        "demo_access": "Demo Access for Client Showcase",
+        "admin_demo": "ADMIN DEMO",
+        "viewer_demo": "VIEWER DEMO"
+    },
     "nav": {
         "dashboard": "Dashboard",
         "analytics": "Analytics",
@@ -130,13 +141,50 @@
             "title": "Ingestion Mode",
             "active": "Active",
             "s3": "S3 Datalake",
-            "s3_desc": "Sync and process PDFs from an S3 bucket. Artifacts saved to S3 processed folder.",
+            "s3_desc": "Sync and process files from an S3 bucket. Artifacts saved to S3 processed folder.",
             "sharepoint": "SharePoint",
             "sharepoint_desc": "Pull documents from SharePoint via Microsoft Graph API.",
             "gdrive": "Google Drive",
-            "gdrive_desc": "Ingest PDFs from a Google Drive folder.",
+            "gdrive_desc": "Ingest files from a Google Drive folder.",
             "upload": "Direct Upload",
             "upload_desc": "Upload documents directly for AI extraction and indexing."
+        },
+        "connection": {
+            "connected": "{{provider}} connected",
+            "not_connected": "{{provider}} not connected",
+            "connect": "Connect",
+            "disconnect": "Disconnect",
+            "disconnecting": "Disconnecting…"
+        },
+        "sources": {
+            "connect_title": "Connect via Link",
+            "connect_description": "Paste a Google Drive or SharePoint folder URL. We'll verify access and list the files for processing.",
+            "url_label": "Folder URL",
+            "label_field": "Label (optional)",
+            "label_placeholder": "e.g. HR Documents",
+            "connect_btn": "Connect & List Files",
+            "verifying": "Verifying…",
+            "connect_error": "Failed to connect. Check the URL and try again.",
+            "connect_success": "Connected! {{count}} files found.",
+            "unsupported_url": "Unsupported URL",
+            "connected_title": "Linked Sources",
+            "file_count": "{{count}} files",
+            "loading": "Loading connections…",
+            "browse": "Browse files",
+            "no_connections": "No linked sources yet"
+        },
+        "jobs": {
+            "process_selected": "Process Selected ({{count}})",
+            "processing": "Processing…",
+            "select_files": "Select files to process",
+            "no_selection": "No files selected",
+            "tracker_title": "Processing Job",
+            "status_queued": "Queued",
+            "status_running": "Running",
+            "status_completed": "Completed",
+            "status_failed": "Failed",
+            "progress": "{{completed}} of {{total}} files processed",
+            "dismiss": "Dismiss"
         },
         "upload": {
             "title": "Upload Documents",
@@ -186,7 +234,7 @@
             "gdrive": "Google Drive",
             "gdrive_desc": "Ingest PDFs from a Google Drive folder."
         },
-        "pdf_files": "PDF files",
+        "pdf_files": "files",
         "sync_now": "Sync Now",
         "syncing": "Syncing…",
         "full_resync": "Full Re-sync",
@@ -200,6 +248,6 @@
         "col_size": "Size",
         "col_modified": "Last Modified",
         "list_error": "Failed to load files",
-        "no_files": "No PDF files found in this connector."
+        "no_files": "No files found in this connector."
     }
 }

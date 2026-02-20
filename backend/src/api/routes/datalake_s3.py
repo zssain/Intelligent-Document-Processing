@@ -6,11 +6,10 @@ pipeline used by ``/api/v1/rag/ingest``.
 
 Idempotency
 -----------
-Each S3 object is tracked via a *source_key* stored in ``Document.source``
-(``s3:<bucket>:<key>``).  The ETag is stored separately in the document's
-``metrics`` JSON under ``_s3_etag``.  When the same key appears again with a
-*different* ETag (i.e. the file was replaced in S3) the old chunks are deleted
-and the Document row is updated in-place.
+Each S3 object is tracked via Firestore with source_metadata containing the
+S3 key and ETag. When the same key appears again with a different ETag
+(i.e. the file was replaced in S3) the old chunks are deleted and the
+Firestore document is updated in-place.
 
 Safety
 ------
@@ -27,12 +26,12 @@ import os
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from config.settings import settings
+from config.settings import settings, DEFAULT_TENANT_ID
 from src.database.base import get_db
-from src.database.models import Document
+from src.database.firestore_service import FirestoreService
 from src.processing import process_document
 from src.storage.s3_service import S3Service
 
@@ -53,17 +52,6 @@ def _get_s3() -> S3Service:
     return _s3_service
 
 
-# ---------------------------------------------------------------------------
-# Simple API-key auth guard (same key for all protected endpoints)
-# ---------------------------------------------------------------------------
-def _verify_api_key(x_api_key: str = Header(default="")) -> None:
-    """Require X-API-Key header when ``settings.api_key`` is set.
-
-    When ``settings.api_key`` is empty (dev default) **all** requests are
-    allowed so local development is frictionless.
-    """
-    if settings.api_key and x_api_key != settings.api_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +69,7 @@ def _s3_url(bucket: str, region: str, key: str) -> str:
 # ---------------------------------------------------------------------------
 # GET /s3/list
 # ---------------------------------------------------------------------------
-@router.get("/s3/list", dependencies=[Depends(_verify_api_key)])
+@router.get("/s3/list")
 async def list_datalake_pdfs(
     prefix: str = Query(default=None, description="S3 prefix to list (default: settings.s3_datalake_prefix)"),
     limit: int = Query(default=100, ge=1, le=5000, description="Max items to return"),
@@ -95,21 +83,22 @@ async def list_datalake_pdfs(
         logger.error("S3 list failed: %s", exc)
         raise HTTPException(status_code=502, detail=f"S3 list failed: {exc}") from exc
 
-    # Filter PDFs only
-    pdfs = [o for o in objects if o["key"].lower().endswith(".pdf")]
+    # Filter supported file types
+    supported = {f".{e}" for e in settings.supported_extensions}
+    files = [o for o in objects if any(o["key"].lower().endswith(ext) for ext in supported)]
 
     return {
         "prefix": effective_prefix,
         "total_objects": len(objects),
-        "total_pdfs": len(pdfs),
-        "pdfs": pdfs,
+        "total_files": len(files),
+        "files": files,
     }
 
 
 # ---------------------------------------------------------------------------
 # POST /s3/sync
 # ---------------------------------------------------------------------------
-@router.post("/s3/sync", dependencies=[Depends(_verify_api_key)])
+@router.post("/s3/sync")
 async def sync_datalake(
     prefix: str = Query(default=None, description="S3 prefix to sync"),
     limit: int = Query(default=None, ge=1, description="Max PDFs to process"),
@@ -135,14 +124,14 @@ async def sync_datalake(
         logger.error("S3 list failed during sync: %s", exc)
         raise HTTPException(status_code=502, detail=f"S3 list failed: {exc}") from exc
 
-    pdfs = [o for o in all_objects if o["key"].lower().endswith(".pdf")]
+    pdfs = [o for o in all_objects if any(o["key"].lower().endswith(f".{ext}") for ext in settings.supported_extensions)]
 
     # Safety guard
     if len(pdfs) > settings.s3_sync_max_files:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Found {len(pdfs)} PDFs which exceeds the safety limit of "
+                f"Found {len(pdfs)} files which exceeds the safety limit of "
                 f"{settings.s3_sync_max_files}. Narrow the prefix or raise "
                 "S3_SYNC_MAX_FILES."
             ),
@@ -153,6 +142,8 @@ async def sync_datalake(
     updated = 0
     failed = 0
     errors: list[dict] = []
+    
+    firestore_svc = FirestoreService(tenant_id=DEFAULT_TENANT_ID)
 
     for obj in pdfs:
         key: str = obj["key"]
@@ -162,13 +153,15 @@ async def sync_datalake(
 
         tmp_path: Optional[str] = None
         try:
-            # 2. Idempotency check ------------------------------------------
-            existing: Optional[Document] = (
-                db.query(Document).filter(Document.source == src_key).first()
+            # 2. Idempotency check - query Firestore ------------------------------------------
+            existing = firestore_svc.get_document_by_source(
+                source_type="s3",
+                source_key="s3_key",
+                source_value=key
             )
 
             if existing and not force:
-                stored_etag = (existing.metrics or {}).get("_s3_etag")
+                stored_etag = existing.get("source_metadata", {}).get("etag")
                 if stored_etag == etag:
                     logger.debug("SKIP (unchanged) %s", key)
                     skipped += 1
@@ -177,7 +170,7 @@ async def sync_datalake(
                             key, stored_etag, etag)
 
             if existing and force:
-                stored_etag = (existing.metrics or {}).get("_s3_etag")
+                stored_etag = existing.get("source_metadata", {}).get("etag")
                 if stored_etag == etag and force:
                     logger.info("FORCE re-process %s", key)
 
@@ -189,12 +182,18 @@ async def sync_datalake(
                 file_path=tmp_path,
                 filename=os.path.basename(key),
                 db=db,
+                tenant_id=DEFAULT_TENANT_ID,
                 s3_service=s3,
                 s3_url=_s3_url(s3.bucket_name, settings.aws_region, key),
                 file_size_bytes=file_size,
-                source=src_key,
+                source="s3",
+                source_metadata={
+                    "s3_key": key,
+                    "etag": etag,
+                    "bucket": s3.bucket_name,
+                },
                 extra_metrics={"_s3_etag": etag, "_s3_key": key},
-                existing_doc=existing,
+                existing_doc_id=existing["id"] if existing else None,
             )
 
             db.commit()
@@ -222,7 +221,7 @@ async def sync_datalake(
     summary = {
         "status": "completed",
         "prefix": effective_prefix,
-        "total_pdfs": len(pdfs),
+        "total_files": len(pdfs),
         "ingested": ingested,
         "updated": updated,
         "skipped": skipped,

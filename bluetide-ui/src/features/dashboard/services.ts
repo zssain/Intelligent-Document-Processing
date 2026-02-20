@@ -1,18 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import type { DashboardData } from './types'
+import api from '@/shared/lib/api'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-
-/** Silent health probe – never throws, never logs to console */
+/** Silent health probe – never throws, never logs to console.
+ *  Also detects connectors that respond 200 but include a _note field
+ *  indicating they are not actually configured. */
 async function silentProbe(url: string): Promise<{ ok: boolean }> {
     try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 5000)
-        const res = await fetch(url, { signal: controller.signal })
-        clearTimeout(timeout)
-        // Consume the body so the browser doesn't flag it as an unhandled error response
-        await res.text().catch(() => {})
-        return { ok: res.ok }
+        const res = await api.get(url, { timeout: 5000 })
+        // If the backend returns a _note field, the connector is not configured
+        if (res.data?._note) {
+            return { ok: false }
+        }
+        return { ok: true }
     } catch {
         return { ok: false }
     }
@@ -22,14 +22,14 @@ export const useDashboardData = () => {
     return useQuery<DashboardData>({
         queryKey: ['dashboard-data'],
         queryFn: async () => {
-            // 1. Fetch real stats and health in parallel
+            // 1. Fetch real stats and health in parallel (using authenticated api)
             const [statsRes, healthRes, mockRes, s3Probe, spProbe, gdProbe] = await Promise.all([
-                fetch(`${API_BASE_URL}/dashboard/stats`).then(r => r.json()),
-                fetch(`${API_BASE_URL}/health`).then(r => r.json()),
+                api.get('dashboard/stats').then(r => r.data),
+                api.get('../health').then(r => r.data).catch(() => ({ database: 'unhealthy' })),
                 fetch('/data/dashboard-mock.json').then(r => r.json()),
-                silentProbe(`${API_BASE_URL}/datalake/s3/list?limit=1`),
-                silentProbe(`${API_BASE_URL}/datalake/sharepoint/list?limit=1`),
-                silentProbe(`${API_BASE_URL}/datalake/gdrive/list?limit=1`),
+                silentProbe('datalake/s3/list?limit=1'),
+                silentProbe('datalake/sharepoint/list?limit=1'),
+                silentProbe('datalake/gdrive/list?limit=1'),
             ])
 
             return {

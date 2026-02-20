@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from src.database.base import Base
-from src.database.models import Document
+from src.database.models import DocumentChunk  # noqa: F401  – ensures model is registered with Base
 from config.settings import settings
 
 # this is the Alembic Config object, which provides

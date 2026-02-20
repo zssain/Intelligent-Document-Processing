@@ -203,6 +203,31 @@ class S3Service:
             logger.error(f"S3 JSON upload failed for {filename}: {e}")
             return None
 
+    def download_json(self, s3_url_or_key: str) -> Optional[dict]:
+        """Download and parse a JSON file from S3.
+
+        Args:
+            s3_url_or_key: Full S3 URL or key to the JSON file
+
+        Returns:
+            Parsed dict or None on failure
+        """
+        import json as _json
+        try:
+            s3_key = s3_url_or_key
+            if s3_url_or_key.startswith("http"):
+                extracted = self.get_key_from_url(s3_url_or_key)
+                if extracted:
+                    s3_key = extracted
+                else:
+                    return None
+
+            obj = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
+            return _json.loads(obj["Body"].read())
+        except Exception as e:
+            logger.debug(f"download_json failed for {s3_url_or_key}: {e}")
+            return None
+
     def delete_by_key(self, s3_key: str) -> bool:
         """Delete an object from S3 by its key."""
         try:

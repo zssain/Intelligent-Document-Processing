@@ -1,1 +1,1 @@
-"""Content Understanding module for Azure AI Content Understanding integration."""
+"""Document extraction module — Docling + Gemini primary, Azure DI 4.0 fallback."""

@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 from openai import OpenAI
 from config.settings import settings
-from typing import List, Dict
+from typing import TYPE_CHECKING, Dict, List, Optional
 from sqlalchemy.orm import Session
 import logging
 import json
+
+if TYPE_CHECKING:
+    from src.api.auth import CurrentUser
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +97,7 @@ class QualityAssurance:
             logger.error(f"QA Failed: {e}")
             raise
 
-    def stream_answer(self, question: str, db: Session, language: str = 'english', entity: str = None, document_type: str = None, document_ids: List[str] = None):
+    def stream_answer(self, question: str, db: Session, language: str = 'english', entity: str = None, document_type: str = None, document_ids: List[str] = None, current_user: Optional["CurrentUser"] = None):
         """Streams an answer based on provided context.
         
         Yields:
@@ -101,8 +106,8 @@ class QualityAssurance:
         logger.info(f"Starting stream_answer for question: '{question}' with document_ids: {document_ids}")
         from src.rag.retriever import Retriever
         
-        # 1. Retrieve Context
-        retriever = Retriever(db)
+        # 1. Retrieve Context (with RBAC filtering when current_user is provided)
+        retriever = Retriever(db, current_user=current_user)
         context_chunks = retriever.get_relevant_context(
             question,
             entity=entity,

@@ -1,0 +1,12 @@
+node_modules/
+.tanstack/
+.vscode/
+dist/
+.git/
+.env
+.env.*
+*.md
+!README.md
+*.log
+*.pdf
+docs/

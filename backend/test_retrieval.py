@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.database.base import SessionLocal
 from src.rag.retriever import Retriever
-from src.database.models import Document
+from src.database.models import DocumentChunk
 
 def test_retrieval(question, document_ids=None):
     db = SessionLocal()
@@ -20,13 +20,13 @@ def test_retrieval(question, document_ids=None):
         print(f"Question: {question}")
         if document_ids:
             print(f"Filtering by Document IDs: {document_ids}")
-            # Verify IDs exist in DB
+            # Verify IDs exist in chunk table
             for d_id in document_ids:
-                doc = db.query(Document).filter(Document.id == uuid.UUID(d_id)).first()
-                if doc:
-                    print(f"  [OK] Found document: {doc.filename} ({d_id})")
+                count = db.query(DocumentChunk).filter(DocumentChunk.doc_id == d_id).count()
+                if count:
+                    print(f"  [OK] Found {count} chunks for doc {d_id}")
                 else:
-                    print(f"  [ERROR] Document ID NOT FOUND: {d_id}")
+                    print(f"  [WARN] No chunks found for doc: {d_id}")
         else:
             print("Searching across ALL documents")
 

@@ -34,13 +34,15 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from config.settings import settings
+from config.settings import settings, DEFAULT_TENANT_ID
 from src.connectors.sharepoint_graph import GraphClient, GraphAuthError, GraphAPIError
 from src.database.base import get_db
-from src.database.models import Document, IngestionCursor
+from src.database.models import DocumentChunk
+from src.database.firestore_service import FirestoreService
+from src.api.auth import CurrentUser, get_current_user
 from src.processing import process_document
 from src.storage.s3_service import S3Service
 
@@ -72,12 +74,50 @@ def _get_s3() -> Optional[S3Service]:
     return _s3
 
 
+
+
 # ---------------------------------------------------------------------------
-# Auth guard (same pattern as datalake_s3)
+# Connection resolution from Firestore source_connections
 # ---------------------------------------------------------------------------
-def _verify_api_key(x_api_key: str = Header(default="")) -> None:
-    if settings.api_key and x_api_key != settings.api_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+def _resolve_sharepoint_connection(tenant_id: str):
+    """Resolve SharePoint site info from Firestore linked connections.
+    
+    Returns (site_hostname, site_path, folder_path) or (None, None, None)
+    if no linked connection found.
+    """
+    try:
+        from src.utils.firebase import get_firestore_client
+        db = get_firestore_client()
+        coll = (
+            db.collection("tenants")
+            .document(tenant_id)
+            .collection("source_connections")
+        )
+        for doc in coll.where("provider", "==", "sharepoint").stream():
+            d = doc.to_dict()
+            if d.get("status") == "connected":
+                hostname = d.get("site_hostname")
+                site_path = d.get("site_path")
+                item_path = d.get("item_path")
+                if hostname and site_path:
+                    logger.info(
+                        "Resolved SharePoint connection %s → %s%s (folder=%s)",
+                        doc.id, hostname, site_path, item_path,
+                    )
+                    return hostname, site_path, item_path
+    except Exception as exc:
+        logger.warning("Could not resolve SharePoint from source connections: %s", exc)
+    return None, None, None
+
+
+def _build_graph_for_connection(site_hostname: str, site_path: str):
+    """Build a GraphClient and resolve site → drive for a linked connection."""
+    graph = GraphClient()
+    site_url = f"{site_hostname}:{site_path}"
+    site_id = graph.resolve_site_id(site_url)
+    drive_id = graph.resolve_drive_id(site_id)
+    return graph, site_id, drive_id
 
 
 # ---------------------------------------------------------------------------
@@ -92,36 +132,32 @@ def _cursor_key(site_id: str, drive_id: str, folder_path: str) -> str:
     return f"sharepoint:{site_id}:{drive_id}:{folder_path}"
 
 
-def _is_pdf(item: dict) -> bool:
+def _is_supported(item: dict) -> bool:
     name: str = item.get("name", "")
-    return name.lower().endswith(".pdf") and "file" in item
+    ext = os.path.splitext(name)[1].lstrip(".").lower()
+    return ext in settings.supported_extensions and "file" in item
 
 
-def _load_cursor(db: Session, key: str) -> Optional[str]:
-    row = db.query(IngestionCursor).filter(IngestionCursor.cursor_key == key).first()
-    return row.cursor_value if row else None
+def _load_cursor(firestore_svc: FirestoreService, key: str) -> Optional[str]:
+    cursor = firestore_svc.get_cursor(key)
+    return cursor["cursor_value"] if cursor else None
 
 
-def _save_cursor(db: Session, key: str, value: str) -> None:
-    row = db.query(IngestionCursor).filter(IngestionCursor.cursor_key == key).first()
-    if row:
-        row.cursor_value = value
-    else:
-        row = IngestionCursor(provider="sharepoint", cursor_key=key, cursor_value=value)
-        db.add(row)
-    db.commit()
+def _save_cursor(firestore_svc: FirestoreService, key: str, value: str) -> None:
+    firestore_svc.set_cursor(key, "sharepoint", value)
 
 
 # ---------------------------------------------------------------------------
 # GET /sharepoint/list
 # ---------------------------------------------------------------------------
-@router.get("/sharepoint/list", dependencies=[Depends(_verify_api_key)])
+@router.get("/sharepoint/list")
 async def list_sharepoint_pdfs(
     folder_path: str = Query(
         default=None,
         description="Folder path inside the document library (default from settings)",
     ),
     limit: int = Query(default=100, ge=1, le=5000),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """List PDF items in a SharePoint folder."""
     # Early exit when SharePoint is not fully configured
@@ -130,36 +166,61 @@ async def list_sharepoint_pdfs(
         or not settings.sharepoint_client_id
         or not settings.sharepoint_client_secret
     )
-    missing_site = not settings.sharepoint_site_id and not settings.sharepoint_site_url
-    if missing_creds or missing_site:
+    if missing_creds:
         return {
             "folder_path": folder_path or settings.sharepoint_folder_path,
             "drive_id": "",
             "total_items": 0,
-            "total_pdfs": 0,
-            "pdfs": [],
-            "_note": "SharePoint connector is not configured. Set SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID, SHAREPOINT_CLIENT_SECRET and either SHAREPOINT_SITE_ID or SHAREPOINT_SITE_URL.",
+            "total_files": 0,
+            "files": [],
+            "_note": "SharePoint connector is not configured. Set SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID, SHAREPOINT_CLIENT_SECRET.",
         }
 
-    effective_path = folder_path or settings.sharepoint_folder_path
+    # Resolve site info: prefer env vars, fall back to linked connections
+    missing_site = not settings.sharepoint_site_id and not settings.sharepoint_site_url
+    use_connection = False
+    conn_hostname = conn_site_path = conn_item_path = None
+    if missing_site:
+        tenant_id = current_user.tenant_id or DEFAULT_TENANT_ID
+        conn_hostname, conn_site_path, conn_item_path = _resolve_sharepoint_connection(tenant_id)
+        if not conn_hostname:
+            return {
+                "folder_path": folder_path or settings.sharepoint_folder_path,
+                "drive_id": "",
+                "total_items": 0,
+                "total_files": 0,
+                "files": [],
+                "_note": "No SharePoint site configured. Connect a SharePoint folder via 'Connect via Link' or set SHAREPOINT_SITE_URL.",
+            }
+        use_connection = True
+
     try:
-        graph = _get_graph()
-        _site_id, drive_id = graph.get_site_and_drive()
-        items = graph.list_folder_children(drive_id, effective_path, max_items=limit)
+        if use_connection:
+            graph, _site_id, drive_id = _build_graph_for_connection(
+                conn_hostname, conn_site_path
+            )
+            effective_path = folder_path or conn_item_path  # None → drive root
+        else:
+            graph = _get_graph()
+            _site_id, drive_id = graph.get_site_and_drive()
+            effective_path = folder_path or settings.sharepoint_folder_path
+        # Recursively list files inside subfolders
+        items = graph.list_all_files_recursive(drive_id, effective_path, max_files=limit)
     except Exception as exc:
         logger.warning("SharePoint list failed: %s", exc)
+        effective_path = folder_path or (conn_item_path if use_connection else settings.sharepoint_folder_path) or ""
         return {
             "folder_path": effective_path,
             "drive_id": "",
             "total_items": 0,
-            "total_pdfs": 0,
-            "pdfs": [],
+            "total_files": 0,
+            "files": [],
             "_note": f"SharePoint list failed: {exc}",
         }
 
     pdfs = []
     for item in items:
-        if not _is_pdf(item):
+        if not _is_supported(item):
             continue
         pdfs.append({
             "name": item["name"],
@@ -174,15 +235,15 @@ async def list_sharepoint_pdfs(
         "folder_path": effective_path,
         "drive_id": drive_id,
         "total_items": len(items),
-        "total_pdfs": len(pdfs),
-        "pdfs": pdfs,
+        "total_files": len(pdfs),
+        "files": pdfs,
     }
 
 
 # ---------------------------------------------------------------------------
 # POST /sharepoint/sync
 # ---------------------------------------------------------------------------
-@router.post("/sharepoint/sync", dependencies=[Depends(_verify_api_key)])
+@router.post("/sharepoint/sync")
 async def sync_sharepoint(
     folder_path: str = Query(default=None, description="Folder path to sync"),
     limit: int = Query(default=None, ge=1, description="Max PDFs to process"),
@@ -192,6 +253,7 @@ async def sync_sharepoint(
         description="Ignore delta cursor and list all children (slower)",
     ),
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Incrementally ingest PDFs from a SharePoint folder.
 
@@ -204,29 +266,52 @@ async def sync_sharepoint(
         or not settings.sharepoint_client_id
         or not settings.sharepoint_client_secret
     )
-    missing_site = not settings.sharepoint_site_id and not settings.sharepoint_site_url
-    if missing_creds or missing_site:
+    if missing_creds:
         return {
             "status": "skipped",
-            "total_pdfs": 0, "ingested": 0, "updated": 0, "skipped": 0, "failed": 0,
-            "_note": "SharePoint connector is not configured.",
+            "total_files": 0, "ingested": 0, "updated": 0, "skipped": 0, "failed": 0,
+            "_note": "SharePoint connector is not configured (missing credentials).",
         }
 
-    effective_path = folder_path or settings.sharepoint_folder_path
+    # Resolve site info: prefer env vars, fall back to linked connections
+    missing_site = not settings.sharepoint_site_id and not settings.sharepoint_site_url
+    use_connection = False
+    conn_hostname = conn_site_path = conn_item_path = None
+    if missing_site:
+        tenant_id = current_user.tenant_id or DEFAULT_TENANT_ID
+        conn_hostname, conn_site_path, conn_item_path = _resolve_sharepoint_connection(tenant_id)
+        if not conn_hostname:
+            return {
+                "status": "skipped",
+                "total_files": 0, "ingested": 0, "updated": 0, "skipped": 0, "failed": 0,
+                "_note": "No SharePoint site configured. Connect a SharePoint folder via 'Connect via Link' first.",
+            }
+        use_connection = True
+
     effective_limit = limit or settings.sharepoint_sync_max_files
+
+    # 1. Resolve IDs --------------------------------------------------------
+    try:
+        if use_connection:
+            graph, site_id, drive_id = _build_graph_for_connection(
+                conn_hostname, conn_site_path
+            )
+            effective_path = folder_path or conn_item_path or "General"
+        else:
+            graph = _get_graph()
+            site_id, drive_id = graph.get_site_and_drive()
+            effective_path = folder_path or settings.sharepoint_folder_path
+    except (GraphAuthError, GraphAPIError) as exc:
+        logger.error("SharePoint auth / resolve failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     logger.info(
         "▶ SharePoint sync started – folder=%s, limit=%d, force=%s, full_scan=%s",
         effective_path, effective_limit, force, full_scan,
     )
 
-    # 1. Resolve IDs --------------------------------------------------------
-    try:
-        graph = _get_graph()
-        site_id, drive_id = graph.get_site_and_drive()
-    except (GraphAuthError, GraphAPIError) as exc:
-        logger.error("SharePoint auth / resolve failed: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    # Firestore service for idempotency + cursors
+    firestore_svc = FirestoreService(tenant_id=DEFAULT_TENANT_ID)
 
     # 2. Get items -----------------------------------------------------------
     ck = _cursor_key(site_id, drive_id, effective_path)
@@ -239,7 +324,7 @@ async def sync_sharepoint(
                 drive_id, effective_path, max_items=effective_limit
             )
         else:
-            delta_link = _load_cursor(db, ck)
+            delta_link = _load_cursor(firestore_svc, ck)
             items, new_delta_link = graph.delta_query(
                 drive_id, effective_path,
                 delta_link=delta_link,
@@ -250,14 +335,14 @@ async def sync_sharepoint(
         logger.error("SharePoint query failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    pdfs = [i for i in items if _is_pdf(i)]
+    pdfs = [i for i in items if _is_supported(i)]
 
     # Safety guard
     if len(pdfs) > settings.sharepoint_sync_max_files:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Found {len(pdfs)} PDFs which exceeds the safety limit of "
+                f"Found {len(pdfs)} files which exceeds the safety limit of "
                 f"{settings.sharepoint_sync_max_files}. Narrow the folder or "
                 "raise SHAREPOINT_SYNC_MAX_FILES."
             ),
@@ -279,13 +364,15 @@ async def sync_sharepoint(
 
         tmp_path: Optional[str] = None
         try:
-            # 3. Idempotency check ------------------------------------------
-            existing: Optional[Document] = (
-                db.query(Document).filter(Document.source == src_key).first()
+            # 3. Idempotency check via Firestore ----------------------------
+            existing = firestore_svc.get_document_by_source(
+                source_type="sharepoint",
+                source_key="_sp_item_id",
+                source_value=item_id,
             )
 
             if existing and not force:
-                stored_etag = (existing.metrics or {}).get("_sp_etag")
+                stored_etag = existing.get("stats", {}).get("_sp_etag")
                 if stored_etag == item_etag:
                     logger.debug("SKIP (unchanged) %s", item_name)
                     skipped += 1
@@ -298,24 +385,31 @@ async def sync_sharepoint(
                 logger.info("FORCE re-process %s", item_name)
 
             # 4. Download ---------------------------------------------------
-            tmp_path = graph.download_file(drive_id, item_id)
+            tmp_path = graph.download_file(drive_id, item_id, filename=item_name)
 
             # 5-11. Centralized pipeline ------------------------------------
             result = process_document(
                 file_path=tmp_path,
                 filename=item_name,
                 db=db,
+                tenant_id=DEFAULT_TENANT_ID,
                 s3_service=_get_s3(),
                 s3_url=web_url,
                 file_size_bytes=item_size,
-                source=src_key,
+                source="sharepoint",
+                source_metadata={
+                    "_sp_item_id": item_id,
+                    "_sp_drive_id": drive_id,
+                    "_sp_web_url": web_url,
+                    "source_key": src_key,
+                },
                 extra_metrics={
                     "_sp_etag": item_etag,
                     "_sp_item_id": item_id,
                     "_sp_drive_id": drive_id,
                     "_sp_web_url": web_url,
                 },
-                existing_doc=existing,
+                existing_doc_id=existing["id"] if existing else None,
             )
 
             db.commit()
@@ -343,7 +437,7 @@ async def sync_sharepoint(
     # 12. Persist delta cursor ----------------------------------------------
     if new_delta_link:
         try:
-            _save_cursor(db, ck, new_delta_link)
+            _save_cursor(firestore_svc, ck, new_delta_link)
             logger.info("Delta cursor saved for %s", ck)
         except Exception as exc:
             logger.warning("Failed to save delta cursor: %s", exc)
@@ -352,7 +446,7 @@ async def sync_sharepoint(
         "status": "completed",
         "folder_path": effective_path,
         "drive_id": drive_id,
-        "total_pdfs": len(pdfs),
+        "total_files": len(pdfs),
         "ingested": ingested,
         "updated": updated,
         "skipped": skipped,

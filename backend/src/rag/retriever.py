@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from src.rag.vector_store import VectorStore
 from src.rag.embedder import Embedder
-from typing import List, Dict
+from src.api.auth import CurrentUser, get_user_doc_filter
+from typing import Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,9 +10,18 @@ logger = logging.getLogger(__name__)
 class Retriever:
     """Orchestrates document retrieval using embeddings and metadata filters."""
     
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, current_user: Optional[CurrentUser] = None):
         self.vector_store = VectorStore(db)
         self.embedder = Embedder()
+        self.current_user = current_user
+
+        # Derive RBAC policy filter (None → admin / no user → unrestricted)
+        if current_user is not None:
+            self._doc_filter = get_user_doc_filter(current_user)
+            self._tenant_id = current_user.tenant_id
+        else:
+            self._doc_filter = None
+            self._tenant_id = None
         
     def get_relevant_context(self, question: str, entity: str = None, document_type: str = None, document_ids: List[str] = None, limit: int = 10) -> List[Dict]:
         """Retrieves assembly of relevant chunks for a question.
@@ -20,6 +30,7 @@ class Retriever:
             question: The natural language question
             entity: Optional company name to filter results
             document_type: Optional document type filter
+            document_ids: Optional list of specific doc IDs to search within
             limit: Max number of chunks to return
             
         Returns:
@@ -47,10 +58,16 @@ class Retriever:
             if document_type:
                 filters["document_type"] = document_type
             if document_ids:
-                filters["document_ids"] = document_ids
+                filters["doc_ids"] = document_ids
                 
-            # 4. Perform search
-            results = self.vector_store.search(query_embedding, limit=limit, filters=filters)
+            # 4. Perform search (with RBAC policy filter from CurrentUser)
+            results = self.vector_store.search(
+                query_embedding,
+                limit=limit,
+                filters=filters,
+                tenant_id=self._tenant_id,
+                doc_filter=self._doc_filter,
+            )
             
             # 5. Format output
             context_chunks = []

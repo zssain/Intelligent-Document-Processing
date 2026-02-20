@@ -1,14 +1,20 @@
 """FastAPI application initialization."""
 
-from fastapi import FastAPI, Depends
+from fastapi import APIRouter, FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.database.base import get_db
+from src.api.auth import get_current_user
 from src.api.routes import upload, content_understanding, rag, dashboard
 from src.api.routes import datalake_s3
 from src.api.routes import datalake_sharepoint
 from src.api.routes import datalake_gdrive
+from src.api.routes import admin as admin_routes
+from src.api.routes import documents as documents_routes
+from src.api.routes import oauth as oauth_routes
+from src.api.routes import jobs as jobs_routes
+from src.api.routes import link_connect as link_connect_routes
 from config.settings import settings
 import logging
 
@@ -38,16 +44,37 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
-# Include routers
-app.include_router(upload.router, prefix="/api/v1", tags=["Upload"])
-app.include_router(content_understanding.router, prefix="/api/v1/cu", tags=["content-understanding"])
-app.include_router(rag.router, prefix="/api/v1/rag", tags=["rag"])
-app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
-app.include_router(datalake_s3.router, prefix="/api/v1/datalake", tags=["datalake"])
-app.include_router(datalake_sharepoint.router, prefix="/api/v1/datalake", tags=["datalake-sharepoint"])
-app.include_router(datalake_gdrive.router, prefix="/api/v1/datalake", tags=["datalake-gdrive"])
+# ---------------------------------------------------------------------------
+# Authenticated router – all protected sub-routers are mounted here so that
+# ``get_current_user`` runs automatically on every request.
+# ---------------------------------------------------------------------------
+authenticated_router = APIRouter(
+    prefix="/api/v1",
+    dependencies=[Depends(get_current_user)],
+)
+
+authenticated_router.include_router(upload.router, tags=["Upload"])
+authenticated_router.include_router(content_understanding.router, prefix="/cu", tags=["content-understanding"])
+authenticated_router.include_router(rag.router, prefix="/rag", tags=["rag"])
+authenticated_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+authenticated_router.include_router(datalake_s3.router, prefix="/datalake", tags=["datalake"])
+authenticated_router.include_router(datalake_sharepoint.router, prefix="/datalake", tags=["datalake-sharepoint"])
+authenticated_router.include_router(datalake_gdrive.router, prefix="/datalake", tags=["datalake-gdrive"])
+authenticated_router.include_router(admin_routes.router, prefix="/admin", tags=["Admin"])
+authenticated_router.include_router(documents_routes.router, tags=["Documents"])
+authenticated_router.include_router(oauth_routes.router, prefix="/auth", tags=["OAuth"])
+authenticated_router.include_router(jobs_routes.router, prefix="/jobs", tags=["Jobs"])
+authenticated_router.include_router(link_connect_routes.router, prefix="/sources", tags=["Source Connections"])
+
+app.include_router(authenticated_router)
+
+# OAuth callback routes must be public (Google/Azure redirect here via browser)
+app.include_router(oauth_routes.public_router, prefix="/api/v1/auth", tags=["OAuth Callbacks"])
 
 
+# ---------------------------------------------------------------------------
+# Public endpoints (no auth required)
+# ---------------------------------------------------------------------------
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -88,15 +115,6 @@ async def startup_event():
     os.makedirs(settings.processed_dir, exist_ok=True)
     os.makedirs("logs", exist_ok=True)
 
-    # Ensure IngestionCursor table exists (idempotent create_all)
-    from src.database.base import engine, Base
-    from src.database.models import IngestionCursor  # noqa: F401 – force registration
-    try:
-        IngestionCursor.__table__.create(engine, checkfirst=True)
-        logger.info("IngestionCursor table ready")
-    except Exception as e:
-        logger.warning(f"Could not auto-create ingestion_cursors table: {e}")
-    
     logger.info("API started successfully")
 
 

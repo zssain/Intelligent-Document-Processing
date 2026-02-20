@@ -6,6 +6,7 @@ import { DocumentPreviewSheet } from './components/DocumentPreviewSheet'
 import { DocumentUploadForm } from './components/DocumentUploadForm'
 import { DocumentActiveFilters } from './components/DocumentActiveFilters'
 import { ModeSelector } from './components/ModeSelector'
+import { ConnectionStatus } from './components/ConnectionStatus'
 
 export const Document = {
     Root: DocumentProvider,
@@ -16,4 +17,5 @@ export const Document = {
     Upload: DocumentUploadForm,
     ActiveFilters: DocumentActiveFilters,
     ModeSelector: ModeSelector,
+    ConnectionStatus: ConnectionStatus,
 }

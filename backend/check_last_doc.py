@@ -4,26 +4,26 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.database.base import SessionLocal
-from src.database.models import Document
+from src.database.firestore_service import FirestoreService
+from config.settings import DEFAULT_TENANT_ID
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def check_last_doc():
-    db = SessionLocal()
     try:
-        doc = db.query(Document).order_by(Document.processed_at.desc()).first()
-        if doc:
-            logger.info(f"Last Document: {doc.filename} (ID: {doc.id})")
-            logger.info(f"  S3 URL: {doc.s3_url}")
-            logger.info(f"  Raw Path: {doc.raw_cu_output_path}")
-            logger.info(f"  Normalized Path: {doc.normalized_output_path}")
+        fs = FirestoreService(tenant_id=DEFAULT_TENANT_ID)
+        docs = fs.list_documents(status="active", limit=1)
+        if docs:
+            doc = docs[0]
+            logger.info(f"Last Document: {doc.get('title', 'untitled')} (ID: {doc.get('id')})")
+            logger.info(f"  S3 URL: {doc.get('s3_url', '')}")
+            logger.info(f"  Normalized URL: {doc.get('normalized_url', '')}")
         else:
             logger.info("No documents found")
-    finally:
-        db.close()
+    except Exception as e:
+        logger.error(f"Error: {e}")
 
 if __name__ == "__main__":
     check_last_doc()

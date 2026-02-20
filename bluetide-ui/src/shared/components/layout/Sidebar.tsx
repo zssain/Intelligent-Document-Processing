@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/shared/context/auth-context'
 import { useIngestionMode, type IngestionMode } from '@/features/documents/ingestion-mode-context'
 
 interface SidebarProps {
@@ -26,6 +27,8 @@ export function Sidebar({ className }: SidebarProps) {
     const isChat = pathname.startsWith('/chat')
     const isAnalytics = pathname.startsWith('/analytics')
     const isDocuments = pathname.startsWith('/documents')
+    const { role } = useAuth()
+    const isAdmin = role === 'org_admin'
 
     // Only call hook when in documents context – it's always mounted via root provider
     const { activeMode, setMode } = useIngestionMode()
@@ -71,45 +74,49 @@ export function Sidebar({ className }: SidebarProps) {
                             <span className="text-muted-foreground group-hover:text-foreground group-[.active]:text-primary">{t('sidebar.all_documents')}</span>
                         </Link>
 
-                        {/* Ingestion Modes section divider */}
-                        <div className="pt-4 pb-1 px-4">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">
-                                {t('sidebar.ingestion_sources')}
-                            </p>
-                        </div>
+                        {/* Ingestion Modes section — Admin only */}
+                        {isAdmin && (
+                            <>
+                                <div className="pt-4 pb-1 px-4">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">
+                                        {t('sidebar.ingestion_sources')}
+                                    </p>
+                                </div>
 
-                        {/* Mode links */}
-                        {modeLinks.map((item) => {
-                            const isActive = activeMode === item.mode
-                            return (
-                                <button
-                                    key={item.mode}
-                                    onClick={() => setMode(item.mode)}
-                                    className={cn(
-                                        'group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold transition-all hover:bg-accent active:scale-[0.98]',
-                                        isActive
-                                            ? 'bg-primary/10 text-primary'
-                                            : ''
-                                    )}
-                                >
-                                    <item.icon className={cn(
-                                        'h-4 w-4 transition-colors',
-                                        isActive
-                                            ? 'text-primary'
-                                            : 'text-muted-foreground group-hover:text-primary'
-                                    )} />
-                                    <span className={cn(
-                                        'transition-colors',
-                                        isActive
-                                            ? 'text-primary'
-                                            : 'text-muted-foreground group-hover:text-foreground'
-                                    )}>{item.label}</span>
-                                    {isActive && (
-                                        <Layers className="h-3 w-3 ml-auto text-primary/60" />
-                                    )}
-                                </button>
-                            )
-                        })}
+                                {/* Mode links */}
+                                {modeLinks.map((item) => {
+                                    const isActive = activeMode === item.mode
+                                    return (
+                                        <button
+                                            key={item.mode}
+                                            onClick={() => setMode(item.mode)}
+                                            className={cn(
+                                                'group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-bold transition-all hover:bg-accent active:scale-[0.98]',
+                                                isActive
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : ''
+                                            )}
+                                        >
+                                            <item.icon className={cn(
+                                                'h-4 w-4 transition-colors',
+                                                isActive
+                                                    ? 'text-primary'
+                                                    : 'text-muted-foreground group-hover:text-primary'
+                                            )} />
+                                            <span className={cn(
+                                                'transition-colors',
+                                                isActive
+                                                    ? 'text-primary'
+                                                    : 'text-muted-foreground group-hover:text-foreground'
+                                            )}>{item.label}</span>
+                                            {isActive && (
+                                                <Layers className="h-3 w-3 ml-auto text-primary/60" />
+                                            )}
+                                        </button>
+                                    )
+                                })}
+                            </>
+                        )}
                     </nav>
                 ) : (
                     <div className="px-3">

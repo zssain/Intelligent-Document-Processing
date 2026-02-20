@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Analytics } from '@/features/analytics'
 import {
     Download,
@@ -11,6 +11,12 @@ import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 
 export const Route = createFileRoute('/analytics')({
+    beforeLoad: ({ context }) => {
+        const auth = (context as any).auth
+        if (!auth || auth.role !== 'org_admin') {
+            throw redirect({ to: '/' })
+        }
+    },
     component: AnalyticsPage,
 })
 

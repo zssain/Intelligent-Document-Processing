@@ -36,13 +36,32 @@ class Chunker:
 
         Args:
             normalized_data: Output from ``DocumentNormalizer.normalize()``.
-            markdown_content: Full markdown text from Azure CU.
+            markdown_content: Full markdown text from extraction.
 
         Returns:
             Deduplicated list of chunk dicts with keys
             ``text``, ``chunk_type``, ``metadata``.
         """
         chunks: List[dict] = []
+
+        # 0. Summary chunk (if available — helps RAG for any document type)
+        summary = normalized_data.get("summary", "").strip()
+        entity = normalized_data.get("entity", "the entity")
+        doc_type = normalized_data.get("document_type", "Document")
+        if summary and len(summary) >= MIN_CHUNK_CHARS:
+            chunks.append(
+                {
+                    "text": f"Document Summary – {entity} ({doc_type}):\n\n{summary}",
+                    "chunk_type": "fact",
+                    "metadata": {
+                        "entity": entity,
+                        "statement": doc_type,
+                        "field": "_summary",
+                        "is_fact": True,
+                        "is_summary": True,
+                    },
+                }
+            )
 
         # 1. Extracted-Field Fact Chunks
         fact_chunks = Chunker._generate_fact_chunks(normalized_data)

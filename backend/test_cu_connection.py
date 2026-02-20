@@ -1,36 +1,43 @@
+"""Quick smoke-test for the extraction backend.
+
+Tests that ContentUnderstandingService can initialise with the configured
+backend (Docling+Gemini or Azure DI) and optionally analyses a small PDF.
+"""
+
 import asyncio
+import os
+import logging
+
 from src.cu.client import ContentUnderstandingService
 from config.settings import settings
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 async def test_cu():
-    print(f"Testing Azure CU Connection...")
-    print(f"Endpoint: {settings.azure_cu_endpoint}")
-    print(f"Analyzer ID: {settings.azure_cu_analyzer_id}")
-    
+    print(f"Testing extraction backend (configured: {settings.extraction_backend}) …")
+    print(f"  Gemini model : {settings.gemini_model}")
+    print(f"  Azure DI EP  : {settings.azure_doc_endpoint or '(not set)'}")
+
     try:
         service = ContentUnderstandingService()
-        # Create a dummy PDF file if none exists
-        import os
-        if not os.path.exists("test_upload.pdf"):
-            with open("test_upload.pdf", "wb") as f:
-                f.write(b"%PDF-1.4\n%...\n") # Minimal valid PDF header just for connection check
-        
-        # We can't actually analyze a garbage PDF without error, but we can see if the client initializes
-        # and if the call fails with a specific error (auth vs file format).
-        # Actually it's better to use a real small PDF if possible, or expect a 400 Bad Request which confirms connectivity.
-        
-        print("Client initialized successfully.")
-        
-        # Check if we can list analyzers or something basic? No method for that in the wrapper.
-        # Let's try to verify the credentials by checking if the analyzer request is constructed.
-        pass
+        print(f"✅ Backend initialised — active model_id: {service.model_id}")
+
+        # Optionally analyse a tiny dummy PDF
+        test_pdf = "test_upload.pdf"
+        if not os.path.exists(test_pdf):
+            # Create a minimal PDF for connectivity check
+            with open(test_pdf, "wb") as f:
+                f.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+            print(f"  (created minimal {test_pdf} for smoke-test)")
+
+        print("Service ready.  To run a full analysis, call:")
+        print(f"  service.analyze_document('{test_pdf}')")
 
     except Exception as e:
-        print(f"Setup failed: {e}")
+        print(f"❌ Setup failed: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(test_cu())

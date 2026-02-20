@@ -16,13 +16,26 @@ import {
     ExternalLink,
     TrendingUp,
     Layout,
+    Globe,
+    Shield,
+    Tag,
+    Calendar,
+    HardDrive,
 } from 'lucide-react'
 import { Button } from '@/shared/components/ui/button'
+import { Badge } from '@/shared/components/ui/badge'
 
 export function DocumentPreviewSheet() {
     const { selectedDocument, isPreviewOpen, setIsPreviewOpen } = useDocuments()
 
     if (!selectedDocument) return null
+
+    const confidenceColor =
+        (selectedDocument.confidencePercentage ?? 0) >= 90
+            ? 'text-emerald-500'
+            : (selectedDocument.confidencePercentage ?? 0) >= 70
+                ? 'text-amber-500'
+                : 'text-rose-500'
 
     return (
         <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
@@ -44,12 +57,26 @@ export function DocumentPreviewSheet() {
                             </div>
                         </div>
                         <div className="flex items-center gap-2 pr-8">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                                <Download className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                                <ExternalLink className="h-4 w-4" />
-                            </Button>
+                            {selectedDocument.s3Url && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                    onClick={() => window.open(selectedDocument.s3Url, '_blank')}
+                                >
+                                    <Download className="h-4 w-4" />
+                                </Button>
+                            )}
+                            {selectedDocument.s3Url && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                    onClick={() => window.open(selectedDocument.s3Url, '_blank')}
+                                >
+                                    <ExternalLink className="h-4 w-4" />
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -60,10 +87,10 @@ export function DocumentPreviewSheet() {
                                 Confidence
                             </p>
                             <div className="flex items-center justify-between">
-                                <span className="text-2xl font-bold text-emerald-500">
+                                <span className={`text-2xl font-bold ${confidenceColor}`}>
                                     {selectedDocument.confidencePercentage ?? 0}%
                                 </span>
-                                <TrendingUp className="h-4 w-4 text-emerald-500/70" />
+                                <TrendingUp className={`h-4 w-4 ${confidenceColor} opacity-70`} />
                             </div>
                         </div>
                         <div className="p-4 rounded-xl border bg-card/50 space-y-1.5 transition-all hover:bg-card">
@@ -89,17 +116,108 @@ export function DocumentPreviewSheet() {
                             >
                                 Overview
                             </TabsTrigger>
+                            <TabsTrigger
+                                value="preview"
+                                className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-0 text-sm font-medium transition-all"
+                            >
+                                Document Preview
+                            </TabsTrigger>
                         </TabsList>
                     </div>
 
                     <div className="flex-1 overflow-y-auto bg-muted/30">
+                        {/* Overview Tab */}
                         <TabsContent value="overview" className="m-0 p-6 space-y-6">
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                    <Layout className="h-3.5 w-3.5" />
+                                    Document Details
+                                </h3>
+
+                                <div className="space-y-3">
+                                    {/* Language */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/50 border">
+                                        <div className="flex items-center gap-2">
+                                            <Globe className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">Language</span>
+                                        </div>
+                                        <Badge variant="secondary" className="capitalize">
+                                            {selectedDocument.language === 'arabic' ? 'عربي (Arabic)' : selectedDocument.language}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Category */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/50 border">
+                                        <div className="flex items-center gap-2">
+                                            <Tag className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">Category</span>
+                                        </div>
+                                        <Badge variant="secondary" className="capitalize">
+                                            {selectedDocument.category}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Source */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/50 border">
+                                        <div className="flex items-center gap-2">
+                                            <HardDrive className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">Source</span>
+                                        </div>
+                                        <Badge variant="secondary" className="uppercase">
+                                            {selectedDocument.source}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Classification Level */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/50 border">
+                                        <div className="flex items-center gap-2">
+                                            <Shield className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">Classification Level</span>
+                                        </div>
+                                        <Badge variant="outline" className="font-mono">
+                                            Level {selectedDocument.classificationLevel}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Processed Date */}
+                                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/50 border">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                                            <span className="text-sm font-medium">Processed</span>
+                                        </div>
+                                        <span className="text-sm text-muted-foreground">
+                                            {selectedDocument.uploadedAt.toLocaleDateString('en-US', {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        {/* Document Preview Tab */}
+                        <TabsContent value="preview" className="m-0 p-6 space-y-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                         <Layout className="h-3.5 w-3.5" />
                                         Document Preview
                                     </h3>
+                                    {selectedDocument.s3Url && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="gap-2 text-xs"
+                                            onClick={() => window.open(selectedDocument.s3Url, '_blank')}
+                                        >
+                                            <ExternalLink className="h-3 w-3" />
+                                            Open in new tab
+                                        </Button>
+                                    )}
                                 </div>
 
                                 <div className="aspect-[3/4] rounded-lg border border-border/60 bg-background/50 flex flex-col items-center justify-center overflow-hidden relative group">
@@ -108,15 +226,16 @@ export function DocumentPreviewSheet() {
                                             src={selectedDocument.s3Url}
                                             className="w-full h-full border-none"
                                             title={selectedDocument.name}
+                                            allow="autoplay"
                                         />
                                     ) : (
                                         <>
                                             <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
                                                 <FileText className="h-6 w-6 text-muted-foreground" />
                                             </div>
-                                            <div className="space-y-1">
+                                            <div className="space-y-1 text-center mt-4">
                                                 <p className="text-sm font-medium">No Visual Preview Available</p>
-                                                <p className="text-xs text-muted-foreground">The preview for this document is not yet available in S3.</p>
+                                                <p className="text-xs text-muted-foreground">The preview for this document is not yet available.</p>
                                             </div>
                                         </>
                                     )}

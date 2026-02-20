@@ -24,6 +24,11 @@ export interface Document {
     uid: string
     s3Url?: string
     fileSizeMb?: string
+    // Admin fields
+    classificationLevel: number // 0-3
+    categoryIds: string[]
+    deletedAt: Date | null
+    createdByUid: string
 }
 
 // Mock data generator
@@ -62,5 +67,9 @@ export function generateMockDocuments(count: number): Document[] {
         category: categories[Math.floor(Math.random() * categories.length)],
         fingerprint: `${Math.random().toString(36).substring(2, 8)}...${Math.random().toString(36).substring(2, 8)}`,
         uid: `UID-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        classificationLevel: Math.floor(Math.random() * 4),
+        categoryIds: [],
+        deletedAt: null,
+        createdByUid: 'mock-user',
     }))
 }

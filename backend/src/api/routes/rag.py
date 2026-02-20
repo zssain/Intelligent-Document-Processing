@@ -2,14 +2,15 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from src.database.base import get_db
-from src.database.models import Document
+from src.database.models import DocumentChunk
 from src.processing import process_document, IngestionResult
 from src.rag.retriever import Retriever
 from src.rag.qa import QualityAssurance
 from src.api.models.rag import QueryRequest, QueryResponse, IngestResponse
+from src.api.auth import CurrentUser, get_current_user
 from src.storage.documents import DocumentStorage
 from src.storage.s3_service import S3Service
-from config.settings import settings
+from config.settings import settings, DEFAULT_TENANT_ID
 import os
 import logging
 
@@ -29,13 +30,20 @@ except Exception as e:
 
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Upload a PDF, process with CU, and index for RAG.
+    """Upload a document, process with DI, and index for RAG.
 
     The entire operation (Document row + chunks) is committed atomically:
     either everything succeeds or nothing is persisted.
     """
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    ext = os.path.splitext(file.filename or "")[1].lstrip(".").lower()
+    if ext not in settings.supported_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported file type '.{ext}'. "
+                f"Supported: {', '.join(settings.supported_extensions)}"
+            ),
+        )
 
     file_path: str | None = None
     try:
@@ -54,15 +62,17 @@ async def ingest_document(file: UploadFile = File(...), db: Session = Depends(ge
             except Exception as s3_err:
                 logger.error("S3 upload failed (continuing): %s", s3_err)
 
-        # 3. Run the full pipeline (CU → normalize → chunk → embed → DB)
+        # 3. Run the full pipeline (CU → normalize → chunk → embed → Firestore + DB)
         result: IngestionResult = process_document(
             file_path=file_path,
             filename=file.filename,
             db=db,
+            tenant_id=DEFAULT_TENANT_ID,
             s3_service=s3_service,
             s3_url=s3_url,
             file_size_bytes=file_size_bytes,
             source="local",
+            source_metadata={},
         )
 
         # 4. Commit the whole transaction atomically
@@ -87,12 +97,16 @@ async def ingest_document(file: UploadFile = File(...), db: Session = Depends(ge
                 pass
 
 @router.post("/query", response_model=QueryResponse)
-async def query_rag(request: QueryRequest, db: Session = Depends(get_db)):
+async def query_rag(
+    request: QueryRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """Answers a question using retrieval-augmented generation."""
-    logger.info(f"Query request received: question='{request.question}', language='{request.language}'")
+    logger.info(f"Query request received: question='{request.question}', language='{request.language}', user={current_user.uid}")
     try:
-        # 1. Retrieve
-        retriever = Retriever(db)
+        # 1. Retrieve (with RBAC filtering)
+        retriever = Retriever(db, current_user=current_user)
         context = retriever.get_relevant_context(
             request.question,
             entity=request.entity,
@@ -112,9 +126,13 @@ async def query_rag(request: QueryRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/query/stream")
-async def query_rag_stream(request: QueryRequest, db: Session = Depends(get_db)):
+async def query_rag_stream(
+    request: QueryRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     """Answers a question using retrieval-augmented generation with streaming."""
-    logger.info(f"Streaming query request received: question='{request.question}', language='{request.language}'")
+    logger.info(f"Streaming query request received: question='{request.question}', language='{request.language}', user={current_user.uid}")
     try:
         # Pass parameters to stream_answer which now handles retrieval internally for speed
         return StreamingResponse(
@@ -124,7 +142,8 @@ async def query_rag_stream(request: QueryRequest, db: Session = Depends(get_db))
                 language=request.language,
                 entity=request.entity,
                 document_type=request.document_type,
-                document_ids=request.document_ids
+                document_ids=request.document_ids,
+                current_user=current_user,
             ),
             media_type="text/event-stream"
         )
