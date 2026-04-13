@@ -18,7 +18,7 @@ function RootComponent() {
   const authContext = useAuth()
   const routerState = useRouterState()
   const pathname = routerState.location.pathname
-  
+
   // Check if current route is a public page (login/signup)
   const isPublicPage = ['/login', '/signup'].includes(pathname)
 
@@ -58,16 +58,23 @@ export const Route = createRootRoute({
     // Exclude login and signup from auth guard
     const publicPaths = ['/login', '/signup']
     const isPublicPath = publicPaths.some(path => location.pathname === path)
-    
+
     if (isPublicPath) {
       return
     }
 
     // Wait for Firebase auth state to be ready (persistence restore complete)
-    await auth.authStateReady()
-
-    // Redirect to login if not authenticated, storing the intended path
-    if (!auth.currentUser) {
+    // Add a timeout to prevent indefinite hanging if Firebase is misconfigured
+    try {
+      await Promise.race([
+        auth.authStateReady(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Auth state timeout')), 5000)
+        ),
+      ])
+    } catch (err) {
+      console.warn('[Auth Guard] authStateReady failed or timed out:', err)
+      // On failure, redirect to login as a safety measure
       throw redirect({
         to: '/login',
         search: {
@@ -75,6 +82,18 @@ export const Route = createRootRoute({
         },
       })
     }
+
+    // Redirect to login if not authenticated, storing the intended path
+    if (!auth.currentUser) {
+      console.info('[Auth Guard] No authenticated user, redirecting to login')
+      throw redirect({
+        to: '/login',
+        search: {
+          redirect: location.href,
+        },
+      })
+    }
+    console.info('[Auth Guard] User authenticated:', auth.currentUser.email)
   },
   component: () => (
     <AuthProvider>

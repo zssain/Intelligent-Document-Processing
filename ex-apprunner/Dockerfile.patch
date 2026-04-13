@@ -1,0 +1,3 @@
+FROM 333600347554.dkr.ecr.ap-south-1.amazonaws.com/bluetide/backend:latest
+COPY backend/config/settings.py /app/config/settings.py
+COPY backend/src/api/main.py /app/src/api/main.py

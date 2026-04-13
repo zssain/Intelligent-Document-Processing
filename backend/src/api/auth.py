@@ -7,9 +7,12 @@ Provides:
                          returns a ``CurrentUser`` dataclass.
     require_role       – dependency factory that raises 403 if the user's role
                          does not match the required role.
+    require_source_permission – dependency factory that raises 403 if the user
+                         lacks a specific action on a specific source.
     get_user_doc_filter – returns ``None`` (admin – no filter) or a dict with
-                         ``clearance_level`` and ``allowed_category_ids`` for
-                         row-level document access control.
+                         ``clearance_level``, ``allowed_category_ids``, and
+                         ``allowed_sources`` for row-level document access
+                         control.
 """
 
 from __future__ import annotations
@@ -32,6 +35,24 @@ initialize_firebase()
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+# Default source permissions for new users (view-only on all sources)
+DEFAULT_SOURCE_PERMISSIONS: Dict[str, Dict[str, bool]] = {
+    "s3":            {"can_view": True,  "can_download": False, "can_filter": True,  "can_sync": False, "can_preview": True},
+    "sharepoint":    {"can_view": True,  "can_download": False, "can_filter": True,  "can_sync": False, "can_preview": True},
+    "gdrive":        {"can_view": True,  "can_download": False, "can_filter": True,  "can_sync": False, "can_preview": True},
+    "direct_upload": {"can_view": True,  "can_download": False, "can_filter": True,  "can_sync": False, "can_preview": True},
+}
+
+# Admin gets everything
+ADMIN_SOURCE_PERMISSIONS: Dict[str, Dict[str, bool]] = {
+    source: {action: True for action in ["can_view", "can_download", "can_filter", "can_sync", "can_preview"]}
+    for source in ["s3", "sharepoint", "gdrive", "direct_upload"]
+}
+
+SOURCES = ["s3", "sharepoint", "gdrive", "direct_upload"]
+ACTIONS = ["can_view", "can_download", "can_filter", "can_sync", "can_preview"]
+
+
 @dataclass
 class CurrentUser:
     """Authenticated user context attached to every request."""
@@ -41,7 +62,28 @@ class CurrentUser:
     role: str
     clearance_level: int
     allowed_category_ids: List[str] = field(default_factory=list)
+    source_permissions: Dict[str, Dict[str, bool]] = field(default_factory=dict)
     is_active: bool = True
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role in ("org_admin", "admin")
+
+    @property
+    def allowed_sources(self) -> List[str]:
+        """Sources where the user has can_view == True."""
+        if self.is_admin:
+            return SOURCES[:]
+        return [
+            source for source, perms in self.source_permissions.items()
+            if perms.get("can_view", False)
+        ]
+
+    def has_source_permission(self, source: str, action: str) -> bool:
+        """Check if user has a specific action on a specific source."""
+        if self.is_admin:
+            return True
+        return self.source_permissions.get(source, {}).get(action, False)
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +151,7 @@ async def get_current_user(request: Request) -> CurrentUser:
 
     # 4. Fetch Firestore user profile ----------------------------------------
     allowed_category_ids: List[str] = []
+    source_permissions: Dict[str, Dict[str, bool]] = {}
     is_active: bool = True
 
     try:
@@ -120,12 +163,35 @@ async def get_current_user(request: Request) -> CurrentUser:
             user_data = user_doc.to_dict()
             allowed_category_ids = user_data.get("allowed_category_ids", [])
             is_active = user_data.get("is_active", True)
+            source_permissions = user_data.get("source_permissions", {})
         else:
-            logger.warning(
-                "No Firestore profile found for uid=%s tenant=%s – using claim defaults",
-                uid,
-                tenant_id,
+            # Auto-create Firestore profile on first login
+            logger.info(
+                "Auto-creating Firestore profile for uid=%s tenant=%s role=%s",
+                uid, tenant_id, role,
             )
+            try:
+                # Try to get extra info from Firebase Auth
+                fb_user = firebase_auth.get_user(uid)
+                email = fb_user.email or ""
+                display_name = fb_user.display_name or ""
+            except Exception:
+                email = decoded.get("email", "")
+                display_name = decoded.get("name", "")
+
+            profile_data = {
+                "uid": uid,
+                "email": email,
+                "display_name": display_name,
+                "role": role,
+                "clearance_level": clearance_level,
+                "allowed_category_ids": [],
+                "source_permissions": DEFAULT_SOURCE_PERMISSIONS.copy() if role not in ("org_admin", "admin") else ADMIN_SOURCE_PERMISSIONS.copy(),
+                "is_active": True,
+                "created_at": decoded.get("auth_time", ""),
+            }
+            user_ref.set(profile_data)
+            source_permissions = profile_data["source_permissions"]
     except Exception as exc:
         # Non-fatal: log and continue with claim-only data
         logger.error(
@@ -134,6 +200,14 @@ async def get_current_user(request: Request) -> CurrentUser:
             exc,
             exc_info=True,
         )
+
+    # Resolve effective source permissions
+    if role in ("org_admin", "admin"):
+        effective_permissions = ADMIN_SOURCE_PERMISSIONS.copy()
+    elif source_permissions:
+        effective_permissions = source_permissions
+    else:
+        effective_permissions = DEFAULT_SOURCE_PERMISSIONS.copy()
 
     # 5. Active-user gate ----------------------------------------------------
     if not is_active:
@@ -148,6 +222,7 @@ async def get_current_user(request: Request) -> CurrentUser:
         role=role,
         clearance_level=clearance_level,
         allowed_category_ids=allowed_category_ids,
+        source_permissions=effective_permissions,
         is_active=is_active,
     )
 
@@ -178,6 +253,33 @@ def require_role(required_role: str) -> Callable:
 
 
 # ---------------------------------------------------------------------------
+# Source permission guard – dependency factory
+# ---------------------------------------------------------------------------
+def require_source_permission(source: str, action: str) -> Callable:
+    """Return a FastAPI dependency that raises 403 unless the user has
+    *action* on *source*.
+
+    Usage::
+
+        @router.get("/s3/list",
+                    dependencies=[Depends(require_source_permission("s3", "can_view"))])
+        async def list_s3(): ...
+    """
+
+    async def _check_permission(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> CurrentUser:
+        if not current_user.has_source_permission(source, action):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You do not have '{action}' permission on '{source}'.",
+            )
+        return current_user
+
+    return _check_permission
+
+
+# ---------------------------------------------------------------------------
 # Document-level access filter
 # ---------------------------------------------------------------------------
 def get_user_doc_filter(
@@ -186,13 +288,14 @@ def get_user_doc_filter(
     """Return a document-access filter dict, or ``None`` for admins.
 
     * **org_admin** / **admin** → ``None`` (unrestricted access).
-    * Everyone else → ``{ "clearance_level": <int>, "allowed_category_ids": [...] }``.
+    * Everyone else → ``{ "clearance_level": <int>, "allowed_category_ids": [...], "allowed_sources": [...] }``.
     """
 
-    if user.role in ("org_admin", "admin"):
+    if user.is_admin:
         return None
 
     return {
         "clearance_level": user.clearance_level,
         "allowed_category_ids": user.allowed_category_ids,
+        "allowed_sources": user.allowed_sources,
     }

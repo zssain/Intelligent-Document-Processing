@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { datalakeService } from './services/datalake.service'
+import { usePermissions } from '@/shared/hooks/usePermissions'
 import type {
   ConnectorSource,
   DatalakeFile,
@@ -45,6 +46,10 @@ interface DatalakeContextValue {
   toggleSelectAll: () => void
   clearSelection: () => void
   isAllSelected: boolean
+
+  /** Permission helpers */
+  canSyncActive: boolean
+  canDownloadActive: boolean
 }
 
 const DatalakeContext = createContext<DatalakeContextValue | null>(null)
@@ -98,6 +103,7 @@ const NORMALIZERS: Record<ConnectorSource, (d: any) => DatalakeFile[]> = {
 
 export function DatalakeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
+  const { canViewSource, canSyncSource, canDownloadSource, allowedSources } = usePermissions()
   const [activeSource, setActiveSource] = useState<ConnectorSource>('s3')
   const [lastSyncResult, setLastSyncResult] = useState<SyncResponse | null>(null)
 
@@ -122,27 +128,36 @@ export function DatalakeProvider({ children }: { children: ReactNode }) {
     queryFn: () => datalakeService.s3.list(1),
     retry: 0,
     staleTime: 60_000,
+    enabled: canViewSource('s3'),
   })
   const spProbe = useQuery({
     queryKey: ['datalake-probe', 'sharepoint'],
     queryFn: () => datalakeService.sharepoint.list(1),
     retry: 0,
     staleTime: 60_000,
+    enabled: canViewSource('sharepoint'),
   })
   const gdProbe = useQuery({
     queryKey: ['datalake-probe', 'gdrive'],
     queryFn: () => datalakeService.gdrive.list(1),
     retry: 0,
     staleTime: 60_000,
+    enabled: canViewSource('gdrive'),
   })
 
   /** Helper: check if a probe response indicates the connector is actually configured */
   function isConnectorConfigured(data: any): boolean {
-    // Backend returns 200 with _note when not configured
-    return data != null && !data._note
+    // Backend returns 200 with _note when not configured or empty
+    // But if there's a _note but also total_files >= 0, it's still valid
+    if (data == null) return false
+    // If there's no _note, it's definitely configured
+    if (!data._note) return true
+    // If there IS a _note but also files/data, treat as configured
+    if ((data.total_files ?? data.total_pdfs ?? 0) > 0) return true
+    return false
   }
 
-  const connectorStatuses: ConnectorStatus[] = [
+  const allConnectorStatuses: ConnectorStatus[] = [
     {
       source: 's3',
       status: s3Probe.isLoading ? 'syncing' : (s3Probe.isError || !isConnectorConfigured(s3Probe.data)) ? 'disconnected' : 'connected',
@@ -162,6 +177,11 @@ export function DatalakeProvider({ children }: { children: ReactNode }) {
       message: gdProbe.isError ? String(gdProbe.error) : (gdProbe.data as any)?._note,
     },
   ]
+
+  // Filter connector statuses to only show sources user has access to
+  const connectorStatuses = allConnectorStatuses.filter(
+    (c) => canViewSource(c.source)
+  )
 
   // ------ Sync mutation ------
   const syncMutation = useMutation<SyncResponse, Error, { force?: boolean; full_scan?: boolean; limit?: number }>({
@@ -242,6 +262,8 @@ export function DatalakeProvider({ children }: { children: ReactNode }) {
         toggleSelectAll,
         clearSelection,
         isAllSelected,
+        canSyncActive: canSyncSource(activeSource),
+        canDownloadActive: canDownloadSource(activeSource),
       }}
     >
       {children}

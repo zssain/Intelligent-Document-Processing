@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from config.settings import settings, DEFAULT_TENANT_ID
+from src.api.auth import CurrentUser, get_current_user, require_source_permission
 from src.database.base import get_db
 from src.database.firestore_service import FirestoreService
 from src.processing import process_document
@@ -69,7 +70,7 @@ def _s3_url(bucket: str, region: str, key: str) -> str:
 # ---------------------------------------------------------------------------
 # GET /s3/list
 # ---------------------------------------------------------------------------
-@router.get("/s3/list")
+@router.get("/s3/list", dependencies=[Depends(require_source_permission("s3", "can_view"))])
 async def list_datalake_pdfs(
     prefix: str = Query(default=None, description="S3 prefix to list (default: settings.s3_datalake_prefix)"),
     limit: int = Query(default=100, ge=1, le=5000, description="Max items to return"),
@@ -98,7 +99,7 @@ async def list_datalake_pdfs(
 # ---------------------------------------------------------------------------
 # POST /s3/sync
 # ---------------------------------------------------------------------------
-@router.post("/s3/sync")
+@router.post("/s3/sync", dependencies=[Depends(require_source_permission("s3", "can_sync"))])
 async def sync_datalake(
     prefix: str = Query(default=None, description="S3 prefix to sync"),
     limit: int = Query(default=None, ge=1, description="Max PDFs to process"),

@@ -314,6 +314,8 @@ class GraphClient:
         """
         if delta_link:
             url = delta_link
+        elif not folder_path or folder_path in (".", "/"):
+            url = f"{GRAPH_BASE}/drives/{drive_id}/root/delta"
         else:
             encoded = folder_path.replace(" ", "%20")
             url = f"{GRAPH_BASE}/drives/{drive_id}/root:/{encoded}:/delta"

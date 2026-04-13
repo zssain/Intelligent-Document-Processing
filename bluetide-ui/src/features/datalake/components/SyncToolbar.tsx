@@ -19,37 +19,42 @@ export function SyncToolbar() {
     isSyncing,
     lastSyncResult,
     refetchFiles,
+    canSyncActive,
   } = useDatalake()
 
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4 px-6 border border-border/40 bg-card/30 rounded-xl">
       {/* Left – action buttons */}
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="default"
-          onClick={() => triggerSync({ limit: 10 })}
-          disabled={isSyncing}
-          className="gap-1.5"
-        >
-          {isSyncing ? (
-            <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Zap className="h-3.5 w-3.5" />
-          )}
-          {isSyncing ? t('datalake.syncing') : t('datalake.sync_now')}
-        </Button>
+        {canSyncActive && (
+          <>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => triggerSync({ limit: 10 })}
+              disabled={isSyncing}
+              className="gap-1.5"
+            >
+              {isSyncing ? (
+                <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Zap className="h-3.5 w-3.5" />
+              )}
+              {isSyncing ? t('datalake.syncing') : t('datalake.sync_now')}
+            </Button>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => triggerSync({ force: true, full_scan: true, limit: 10 })}
-          disabled={isSyncing}
-          className="gap-1.5"
-        >
-          <RefreshCcw className="h-3.5 w-3.5" />
-          {t('datalake.full_resync')}
-        </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => triggerSync({ force: true, full_scan: true, limit: 10 })}
+              disabled={isSyncing}
+              className="gap-1.5"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" />
+              {t('datalake.full_resync')}
+            </Button>
+          </>
+        )}
 
         <Button
           size="sm"

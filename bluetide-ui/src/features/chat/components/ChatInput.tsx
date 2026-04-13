@@ -24,25 +24,27 @@ export function ChatInput() {
         >
             {/* Document Context Pills */}
             {contextDocuments.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {contextDocuments.map((doc) => (
-                        <div
-                            key={doc.id}
-                            className="group flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 rounded-full shadow-sm hover:bg-primary/15 transition-all"
-                        >
-                            <Hash className="h-3 w-3 opacity-60" />
-                            <span className="text-xs font-bold leading-none">{doc.name}</span>
-                            <button
-                                type="button"
-                                onClick={() => removeContextDocument(doc.id)}
-                                className="h-4 w-4 rounded-full flex items-center justify-center hover:bg-rose-500/20 hover:text-rose-500 transition-colors"
+                <div className="flex items-center gap-2 px-1 animate-in fade-in slide-in-from-bottom-2 duration-300 overflow-x-auto scrollbar-none">
+                    <div className="flex items-center gap-2 flex-nowrap min-w-0">
+                        {contextDocuments.map((doc) => (
+                            <div
+                                key={doc.id}
+                                className="group flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 rounded-full shadow-sm hover:bg-primary/15 transition-all shrink-0"
                             >
-                                <X className="h-3 w-3" />
-                            </button>
-                        </div>
-                    ))}
-                    <div className="text-[10px] text-muted-foreground self-center italic ml-1 opacity-60">
-                        Ask only with these documents
+                                <Hash className="h-3 w-3 opacity-60" />
+                                <span className="text-xs font-bold leading-none whitespace-nowrap max-w-[150px] truncate">{doc.name}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => removeContextDocument(doc.id)}
+                                    className="h-4 w-4 rounded-full flex items-center justify-center hover:bg-rose-500/20 hover:text-rose-500 transition-colors shrink-0"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground self-center italic shrink-0 ml-1 opacity-60">
+                        {contextDocuments.length} docs selected
                     </div>
                 </div>
             )}

@@ -27,10 +27,14 @@ export async function connectViaLink(
 export async function listConnections(
   provider?: 'gdrive' | 'sharepoint',
 ): Promise<SourceConnection[]> {
-  const { data } = await api.get<SourceConnection[]>('sources/connections', {
-    params: provider ? { provider } : undefined,
-  })
-  return data
+  try {
+    const { data } = await api.get<SourceConnection[]>('sources/connections', {
+      params: provider ? { provider } : undefined,
+    })
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
+  }
 }
 
 // ---------------------------------------------------------------------------

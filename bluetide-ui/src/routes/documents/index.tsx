@@ -31,21 +31,21 @@ function DocumentsPage() {
           icon={<Files className="h-6 w-6" />}
         />
 
-        {/* 2. Ingestion Mode Selector — Admin only */}
-        {isAdmin && <Document.ModeSelector />}
+        {/* 2. Ingestion Mode Selector */}
+        <Document.ModeSelector />
 
-        {/* 2b. OAuth Connection Status (Google Drive / SharePoint) — Admin only */}
-        {isAdmin && <Document.ConnectionStatus />}
+        {/* 2b. OAuth Connection Status (Google Drive / SharePoint) */}
+        <Document.ConnectionStatus />
 
-        {/* 3. Mode-specific content — Admin only */}
-        {isAdmin && (
-          isConnectorMode ? (
-            /* S3 / SharePoint / Google Drive mode → show connector sync UI */
-            <Datalake.Root>
-              <ConnectorModeContent />
-            </Datalake.Root>
-          ) : (
-            /* Direct Upload mode → show upload form */
+        {/* 3. Mode-specific content */}
+        {isConnectorMode ? (
+          /* S3 / SharePoint / Google Drive mode → show connector sync UI */
+          <Datalake.Root>
+            <ConnectorModeContent />
+          </Datalake.Root>
+        ) : (
+          /* Direct Upload mode → show upload form (admin only) */
+          isAdmin && (
             <div className="space-y-6">
               <Document.Upload />
             </div>

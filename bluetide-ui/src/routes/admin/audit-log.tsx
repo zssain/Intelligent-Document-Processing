@@ -3,12 +3,18 @@ import { useQuery } from '@tanstack/react-query'
 import api from '@/shared/lib/api'
 import { useState } from 'react'
 import { Search, Filter, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
+import { auth as firebaseAuth } from '@/shared/lib/firebase'
 
 export const Route = createFileRoute('/admin/audit-log')({
-  beforeLoad: ({ context }) => {
-    const auth = (context as any).auth
-    if (!auth || auth.role !== 'org_admin') {
-      throw redirect({ to: '/' })
+  beforeLoad: async () => {
+    const user = firebaseAuth.currentUser
+    if (!user) {
+      throw redirect({ to: '/login' })
+    }
+    const tokenResult = await user.getIdTokenResult()
+    const role = tokenResult.claims.role as string | undefined
+    if (role !== 'org_admin') {
+      throw redirect({ to: '/documents' })
     }
   },
   component: AdminAuditLog,
@@ -46,47 +52,37 @@ function AdminAuditLog() {
   const pageSize = 20
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['audit-log', page, eventTypeFilter, actorFilter],
+    queryKey: ['audit-log', page],
     queryFn: async () => {
-      // Mock data - replace with actual API call
-      const mockEvents: AuditEvent[] = Array.from({ length: 50 }, (_, i) => ({
-        id: `event-${i}`,
-        eventType: EVENT_TYPES[i % EVENT_TYPES.length],
-        actor: i % 2 === 0 ? 'admin@teclusion.ai' : 'user@teclusion.ai',
-        actorUid: i % 2 === 0 ? 'g7MRrHIQyGX7AfmsGcscHwPVuJA2' : 'q2KvsryTWvU1uhLVrcqCC9XhE4S2',
-        resourceType: 'document',
-        resourceId: `doc-${i}`,
-        action: 'create',
-        details: `Performed action ${i}`,
-        ipAddress: '192.168.1.1',
-        timestamp: new Date(Date.now() - i * 3600000).toISOString(),
+      const offset = (page - 1) * pageSize
+      const { data: resp } = await api.get<{ events: AuditEvent[]; limit: number; offset: number }>(
+        'admin/audit-log',
+        { params: { limit: pageSize, offset } }
+      )
+
+      // Map backend field names to our local types
+      const events: AuditEvent[] = (resp.events || []).map((e: any) => ({
+        id: e.id || e.entity_id || '',
+        eventType: e.event_type || e.eventType || '',
+        actor: e.actor_email || e.actor || '',
+        actorUid: e.actor_uid || e.actorUid || '',
+        resourceType: e.entity_type || e.resourceType || '',
+        resourceId: e.entity_id || e.resourceId || '',
+        action: e.event_type || e.action || '',
+        details: e.after ? JSON.stringify(e.after) : '',
+        ipAddress: '',
+        timestamp: e.created_at || e.timestamp || '',
       }))
-
-      // Apply filters
-      let filtered = mockEvents
-      if (eventTypeFilter) {
-        filtered = filtered.filter((e) => e.eventType === eventTypeFilter)
-      }
-      if (actorFilter) {
-        filtered = filtered.filter((e) =>
-          e.actor.toLowerCase().includes(actorFilter.toLowerCase())
-        )
-      }
-
-      // Paginate
-      const start = (page - 1) * pageSize
-      const end = start + pageSize
-      const events = filtered.slice(start, end)
 
       return {
         events,
-        total: filtered.length,
+        total: events.length < pageSize ? offset + events.length : offset + pageSize + 1,
         page,
         pageSize,
-        totalPages: Math.ceil(filtered.length / pageSize),
+        totalPages: events.length < pageSize ? page : page + 1,
       }
     },
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 30000,
   })
 
   return (
@@ -218,11 +214,10 @@ function AdminAuditLog() {
                   <button
                     key={pageNum}
                     onClick={() => setPage(pageNum)}
-                    className={`px-3 py-1 rounded-md text-sm ${
-                      page === pageNum
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-accent'
-                    }`}
+                    className={`px-3 py-1 rounded-md text-sm ${page === pageNum
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-accent'
+                      }`}
                   >
                     {pageNum}
                   </button>

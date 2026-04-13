@@ -66,7 +66,7 @@ export function NavigationRail() {
     }
 
     return (
-        <aside className="fixed left-0 top-0 z-50 flex h-full w-[64px] flex-col items-center border-e bg-card py-4 shadow-sm">
+        <aside className="fixed left-0 top-12 z-50 flex h-[calc(100%-48px)] w-[64px] flex-col items-center border-e bg-card py-4 shadow-sm">
             {/* App Logo */}
             <div className="mb-8 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
                 <FileText className="h-6 w-6" />
@@ -132,16 +132,26 @@ export function NavigationRail() {
 
                 <div className="mt-auto flex flex-col items-center gap-4">
                     <LanguageToggle />
-                    <ThemeToggle />
 
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <button className="group flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-foreground">
-                                <Settings className="h-5 w-5 transition-transform group-hover:rotate-45" />
-                            </button>
+                            <Link
+                                to={role === 'org_admin' ? '/admin' : '/documents'}
+                                className={cn(
+                                    "group flex h-11 w-11 items-center justify-center rounded-xl transition-all hover:bg-accent",
+                                    pathname.startsWith('/admin')
+                                        ? "bg-primary/10 text-primary shadow-[inset_0_0_10px_rgba(var(--primary),0.1)]"
+                                        : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                <Settings className={cn(
+                                    "h-5 w-5 transition-transform group-hover:rotate-45",
+                                    pathname.startsWith('/admin') && "fill-current/10"
+                                )} />
+                            </Link>
                         </TooltipTrigger>
                         <TooltipContent side="right" className="font-bold border-border/50">
-                            {t('nav.settings')}
+                            {role === 'org_admin' ? 'Admin Settings' : t('nav.settings')}
                         </TooltipContent>
                     </Tooltip>
 

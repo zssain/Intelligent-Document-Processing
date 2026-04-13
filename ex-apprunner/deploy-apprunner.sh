@@ -2,12 +2,14 @@
 # ──────────────────────────────────────────────────────────────────
 # BlueTide – Deploy to AWS App Runner via ECR
 # Usage:
-#   ./deploy.sh backend          # Build & push backend only
-#   ./deploy.sh frontend         # Build & push frontend only
-#   ./deploy.sh all              # Build & push both
-#   ./deploy.sh backend deploy   # Build, push, AND trigger redeployment
+#   ./ex-apprunner/deploy-apprunner.sh backend
+#   ./ex-apprunner/deploy-apprunner.sh frontend
+#   ./ex-apprunner/deploy-apprunner.sh all
+#   ./ex-apprunner/deploy-apprunner.sh backend deploy
 # ──────────────────────────────────────────────────────────────────
 set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Configuration ────────────────────────────────────────────────
 # Override these via env vars or edit here
@@ -22,7 +24,8 @@ BACKEND_SERVICE_ARN="${BACKEND_SERVICE_ARN:-}"
 FRONTEND_SERVICE_ARN="${FRONTEND_SERVICE_ARN:-}"
 
 # Frontend build args (override via env vars)
-VITE_API_URL="${VITE_API_URL:-}"
+# VITE_API_URL is relative (/api/v1) — Nginx proxies to BACKEND_URL at runtime
+VITE_API_URL="${VITE_API_URL:-/api/v1}"
 VITE_FIREBASE_API_KEY="${VITE_FIREBASE_API_KEY:-AIzaSyD8NbjzmQOhyf8lqdM7wlqkpYoFHDdfROM}"
 VITE_FIREBASE_AUTH_DOMAIN="${VITE_FIREBASE_AUTH_DOMAIN:-advanced-idp.firebaseapp.com}"
 VITE_FIREBASE_PROJECT_ID="${VITE_FIREBASE_PROJECT_ID:-advanced-idp}"
@@ -47,42 +50,44 @@ ecr_login() {
 build_backend() {
     echo ""
     echo "🏗️  Building Backend Docker image..."
-    cd "$(dirname "$0")/backend"
 
-    docker build --platform "$PLATFORM" -t bluetide-backend .
+    docker build --platform "$PLATFORM" \
+        -f "$REPO_ROOT/ex-apprunner/backend/Dockerfile.apprunner" \
+        -t bluetide-backend \
+        "$REPO_ROOT"
     docker tag bluetide-backend:latest "${ECR_BACKEND}:latest"
 
     echo "📤 Pushing to ECR..."
     docker push "${ECR_BACKEND}:latest"
     info "Backend image pushed to ${ECR_BACKEND}:latest"
-    cd ..
 }
 
 # ── Build & Push Frontend ────────────────────────────────────────
 build_frontend() {
     if [ -z "$VITE_API_URL" ]; then
-        error "VITE_API_URL is not set. Set it to the backend App Runner URL, e.g.:\n  export VITE_API_URL=https://xxxxx.awsapprunner.com/api/v1"
+        warn "VITE_API_URL not set, defaulting to /api/v1 (Nginx proxy mode)"
+        VITE_API_URL="/api/v1"
     fi
 
     echo ""
     echo "🏗️  Building Frontend Docker image..."
-    cd "$(dirname "$0")/bluetide-ui"
 
     docker build --platform "$PLATFORM" \
+        -f "$REPO_ROOT/ex-apprunner/bluetide-ui/Dockerfile.apprunner" \
         --build-arg VITE_API_URL="$VITE_API_URL" \
         --build-arg VITE_FIREBASE_API_KEY="$VITE_FIREBASE_API_KEY" \
         --build-arg VITE_FIREBASE_AUTH_DOMAIN="$VITE_FIREBASE_AUTH_DOMAIN" \
         --build-arg VITE_FIREBASE_PROJECT_ID="$VITE_FIREBASE_PROJECT_ID" \
         --build-arg VITE_FIREBASE_STORAGE_BUCKET="$VITE_FIREBASE_STORAGE_BUCKET" \
         --build-arg VITE_FIREBASE_APP_ID="$VITE_FIREBASE_APP_ID" \
-        -t bluetide-frontend .
+        -t bluetide-frontend \
+        "$REPO_ROOT"
 
     docker tag bluetide-frontend:latest "${ECR_FRONTEND}:latest"
 
     echo "📤 Pushing to ECR..."
     docker push "${ECR_FRONTEND}:latest"
     info "Frontend image pushed to ${ECR_FRONTEND}:latest"
-    cd ..
 }
 
 # ── Trigger Redeployment ─────────────────────────────────────────

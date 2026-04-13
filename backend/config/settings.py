@@ -1,10 +1,28 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import List, Optional
 from functools import lru_cache
 import os
 
 # ── Firebase ─────────────────────────────────────────────────────
 DEFAULT_TENANT_ID = "default-tenant"
+
+
+def _running_on_lambda() -> bool:
+    """Detect the AWS Lambda runtime without requiring explicit config."""
+    exec_env = os.getenv("AWS_EXECUTION_ENV", "")
+    return bool(
+        os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        or os.getenv("AWS_LAMBDA_RUNTIME_API")
+        or exec_env.startswith("AWS_Lambda")
+    )
+
+
+def _runtime_path(path_suffix: str) -> str:
+    """Store writable runtime files under /tmp on Lambda."""
+    if _running_on_lambda():
+        return f"/tmp/{path_suffix.lstrip('/')}"
+    return path_suffix
 
 
 def _parse_cors_origins() -> List[str]:
@@ -45,7 +63,36 @@ class Settings(BaseSettings):
     port: int = 8000  # App Runner will set PORT env var
 
     # ── CORS ─────────────────────────────────────
-    cors_origins: List[str] = _parse_cors_origins()
+    cors_origins: str = ""
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _coerce_cors_origins(cls, v):
+        """Accept plain string from env-var; the property below splits it."""
+        if isinstance(v, list):
+            return ",".join(v)
+        return v or ""
+
+    @property
+    def cors_allow_all(self) -> bool:
+        """True when CORS_ORIGINS is set to '*' (allow every origin)."""
+        return self.cors_origins.strip() == "*"
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Return the merged list of allowed origins."""
+        # If wildcard, allow all origins
+        if self.cors_allow_all:
+            return ["*"]
+        defaults = [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:4173",
+        ]
+        if self.cors_origins:
+            defaults.extend([o.strip() for o in self.cors_origins.split(",") if o.strip()])
+        return defaults
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["*"]
     cors_allow_headers: List[str] = ["*"]
@@ -87,6 +134,12 @@ class Settings(BaseSettings):
     gdrive_oauth_client_secret: str = ""
     sharepoint_oauth_client_id: str = ""
     sharepoint_oauth_client_secret: str = ""
+    # Legacy reverse-proxy mode where the frontend serves /api/* and forwards
+    # callbacks to the backend (kept for the archived App Runner path).
+    frontend_url: str = ""
+    # Preferred production callback base for direct backend hosting such as
+    # Lambda Function URLs, API Gateway, or a backend custom domain.
+    backend_public_url: str = ""
 
     # ── OpenAI ───────────────────────────────────
     openai_api_key: str
@@ -95,16 +148,17 @@ class Settings(BaseSettings):
 
     # ── Vector DB ────────────────────────────────
     vector_db_provider: str = "chroma"
-    vector_db_path: str = "data/vector_store"
+    vector_db_path: str = _runtime_path("data/vector_store")
 
     # ── Database ─────────────────────────────────
     neon_connection_string: str
 
     # ── Storage ──────────────────────────────────
-    upload_dir: str = "data/raw"
-    processed_dir: str = "data/processed"
-    raw_dir: str = "data/raw_cu"
-    normalized_dir: str = "data/normalized"
+    upload_dir: str = _runtime_path("data/raw")
+    processed_dir: str = _runtime_path("data/processed")
+    raw_dir: str = _runtime_path("data/raw_cu")
+    normalized_dir: str = _runtime_path("data/normalized")
+    logs_dir: str = _runtime_path("logs")
     debug: bool = True
 
     # ── AWS S3 ───────────────────────────────────
@@ -121,6 +175,9 @@ class Settings(BaseSettings):
     s3_datalake_prefix: str = "datalake/"
     # Safety guard: maximum number of PDFs to process in a single /sync call.
     s3_sync_max_files: int = 500
+    # Optional queue used by Lambda/API deployments to dispatch ingestion jobs
+    # to a separate worker function.
+    job_queue_url: str = ""
 
     # ── API Key (simple dev auth) ────────────────
     # Set to a non-empty string to require X-API-Key header on protected endpoints.
@@ -163,7 +220,15 @@ class Settings(BaseSettings):
     gdrive_sync_max_files: int = 500
 
     # ── Firebase ─────────────────────────────────
-    firebase_service_account_key_path: str = ""
+    firebase_service_account_key_path: str = (
+        "/tmp/firebase-sa.json" if _running_on_lambda() else ""
+    )
+
+    # ── DB Pooling ───────────────────────────────
+    # Keep the defaults small on Lambda to avoid opening too many Neon
+    # connections under concurrent cold starts.
+    db_pool_size: int = 1 if _running_on_lambda() else 5
+    db_max_overflow: int = 2 if _running_on_lambda() else 10
 
 
 @lru_cache()

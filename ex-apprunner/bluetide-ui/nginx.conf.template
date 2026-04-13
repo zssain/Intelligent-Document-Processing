@@ -1,0 +1,59 @@
+server {
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # DNS resolver for upstream hostnames (App Runner)
+    resolver 8.8.8.8 valid=30s ipv6=off;
+
+    # ── Gzip compression ─────────────────────────────────────────
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript
+               text/xml application/xml application/xml+rss text/javascript
+               image/svg+xml;
+    gzip_min_length 256;
+
+    # ── API reverse proxy → backend App Runner service ───────────
+    # BACKEND_URL env var is substituted at container startup by envsubst
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        # Use $proxy_host (backend hostname from BACKEND_URL) instead of
+        # $host (frontend hostname).  App Runner validates the Host header
+        # and rejects requests with an unknown hostname.
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
+    }
+
+    # ── Static assets – long cache with immutable ─────────────────
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # ── SPA fallback – all routes go to index.html ────────────────
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ── Security headers ─────────────────────────────────────────
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # ── Health check for App Runner ──────────────────────────────
+    location = /health {
+        access_log off;
+        return 200 '{"status":"ok"}';
+        add_header Content-Type application/json;
+    }
+}

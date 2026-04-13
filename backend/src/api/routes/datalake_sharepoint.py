@@ -42,7 +42,7 @@ from src.connectors.sharepoint_graph import GraphClient, GraphAuthError, GraphAP
 from src.database.base import get_db
 from src.database.models import DocumentChunk
 from src.database.firestore_service import FirestoreService
-from src.api.auth import CurrentUser, get_current_user
+from src.api.auth import CurrentUser, get_current_user, require_source_permission
 from src.processing import process_document
 from src.storage.s3_service import S3Service
 
@@ -150,7 +150,7 @@ def _save_cursor(firestore_svc: FirestoreService, key: str, value: str) -> None:
 # ---------------------------------------------------------------------------
 # GET /sharepoint/list
 # ---------------------------------------------------------------------------
-@router.get("/sharepoint/list")
+@router.get("/sharepoint/list", dependencies=[Depends(require_source_permission("sharepoint", "can_view"))])
 async def list_sharepoint_pdfs(
     folder_path: str = Query(
         default=None,
@@ -243,7 +243,7 @@ async def list_sharepoint_pdfs(
 # ---------------------------------------------------------------------------
 # POST /sharepoint/sync
 # ---------------------------------------------------------------------------
-@router.post("/sharepoint/sync")
+@router.post("/sharepoint/sync", dependencies=[Depends(require_source_permission("sharepoint", "can_sync"))])
 async def sync_sharepoint(
     folder_path: str = Query(default=None, description="Folder path to sync"),
     limit: int = Query(default=None, ge=1, description="Max PDFs to process"),
@@ -296,7 +296,7 @@ async def sync_sharepoint(
             graph, site_id, drive_id = _build_graph_for_connection(
                 conn_hostname, conn_site_path
             )
-            effective_path = folder_path or conn_item_path or "General"
+            effective_path = folder_path or conn_item_path  # None → drive root
         else:
             graph = _get_graph()
             site_id, drive_id = graph.get_site_and_drive()
@@ -314,7 +314,7 @@ async def sync_sharepoint(
     firestore_svc = FirestoreService(tenant_id=DEFAULT_TENANT_ID)
 
     # 2. Get items -----------------------------------------------------------
-    ck = _cursor_key(site_id, drive_id, effective_path)
+    ck = _cursor_key(site_id, drive_id, effective_path or "<root>")
     used_delta = False
     new_delta_link: Optional[str] = None
 

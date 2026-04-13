@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { oauthService, type OAuthProvider } from '../services/oauth.service'
+import { sourcesService } from '@/features/datalake/services/sources.service'
 import { useIngestionMode } from '../ingestion-mode-context'
 import { Button } from '@/shared/components/ui/button'
 import {
@@ -8,14 +9,19 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
+  Info,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { useTranslation } from 'react-i18next'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import type { SourceConnection } from '@/features/datalake/types'
 
 /**
  * Shows the OAuth connection status for the currently active connector mode
  * (Google Drive or SharePoint) and provides Connect / Disconnect actions.
+ *
+ * Also checks for linked source connections — if a source folder is linked
+ * but the user hasn't completed personal OAuth, it shows a helpful message.
  *
  * Hidden when in Upload or S3 mode (no per-user OAuth needed).
  */
@@ -24,8 +30,8 @@ export function ConnectionStatus() {
   const { activeMode, isConnectorMode } = useIngestionMode()
   const queryClient = useQueryClient()
 
-  // Only show for providers that need per-user OAuth
-  const oauthProviders: OAuthProvider[] = ['gdrive', 'sharepoint']
+  // Only show for Google Drive (per-user OAuth needed)
+  const oauthProviders: OAuthProvider[] = ['gdrive']
   const isOAuthMode = isConnectorMode && oauthProviders.includes(activeMode as OAuthProvider)
   const provider = activeMode as OAuthProvider
 
@@ -37,6 +43,21 @@ export function ConnectionStatus() {
     staleTime: 30_000,
     retry: 1,
   })
+
+  // Fetch linked source connections to check if a folder is already linked
+  const { data: rawLinkedSources = [] } = useQuery<SourceConnection[]>({
+    queryKey: ['source-connections'],
+    queryFn: () => sourcesService.listConnections(),
+    enabled: isOAuthMode,
+    staleTime: 30_000,
+  })
+
+  const linkedSources = Array.isArray(rawLinkedSources) ? rawLinkedSources : []
+
+  // Check if there's a linked source for the current provider
+  const hasLinkedSource = useMemo(() => {
+    return linkedSources.some((s) => s.provider === provider)
+  }, [linkedSources, provider])
 
   // Check if OAuth is configured on the server (from connections response)
   const info = connections?.[provider]
@@ -104,6 +125,24 @@ export function ConnectionStatus() {
   // If OAuth is not configured AND not app-only, show informational message
   if (!isLoading && !isOAuthConfigured && !isAppOnlyMode) {
     const providerLabel = provider === 'gdrive' ? 'Google Drive' : 'SharePoint'
+
+    // If there's a linked source, show a softer message
+    if (hasLinkedSource) {
+      return (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-blue-500/30 bg-blue-500/5">
+          <Info className="h-4 w-4 text-blue-500 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">
+              {providerLabel} folder linked
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              A {providerLabel} folder is linked. Use "Refresh" below to list files, or connect your personal account for direct access.
+            </p>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border/40 bg-muted/30">
         <AlertTriangle className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -134,6 +173,42 @@ export function ConnectionStatus() {
 
   const isConnected = info?.connected ?? false
   const isPending = connectMutation.isPending || disconnectMutation.isPending
+
+  // If not connected via OAuth but has a linked source, show a combined message
+  if (!isLoading && !isConnected && hasLinkedSource) {
+    const providerLabel = provider === 'gdrive' ? 'Google Drive' : 'SharePoint'
+    return (
+      <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-blue-500/30 bg-blue-500/5 transition-colors">
+        <div className="flex items-center gap-3 min-w-0">
+          <Info className="h-4 w-4 text-blue-500 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">
+              {providerLabel} folder linked
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Connect your personal {providerLabel} account to access files directly.
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0">
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handleConnect}
+            disabled={isPending}
+            className="gap-1.5"
+          >
+            {isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Link2 className="h-3.5 w-3.5" />
+            )}
+            {t('documents.connection.connect')}
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

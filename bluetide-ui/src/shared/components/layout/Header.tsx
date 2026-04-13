@@ -15,16 +15,14 @@ import {
 } from '@/shared/components/ui/navigation-menu'
 import { cn } from '../../lib/utils'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+import api from '@/shared/lib/api'
 
 export function Header() {
     const { data: health, status } = useQuery({
         queryKey: ['api-health'],
         queryFn: async () => {
-            // Health endpoint is on the root usually
-            const response = await axios.get('http://localhost:8000/health')
+            // Use the shared api instance which resolves VITE_API_URL correctly
+            const response = await api.get('health')
             return response.data
         },
         refetchInterval: 10000,

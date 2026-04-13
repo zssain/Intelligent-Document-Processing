@@ -104,6 +104,11 @@ The API will be available at `http://localhost:8000`.
 - **Package Management**: [uv](https://github.com/astral-sh/uv)
 - **Language**: Python 3.12+
 
+## 🚢 Deployment
+
+- Active deployment guide: [`DEPLOYMENT_CLOUDFLARE_LAMBDA.md`](/Users/zuhairhussain/Desktop/bluetide-B-5-2/DEPLOYMENT_CLOUDFLARE_LAMBDA.md)
+- Archived App Runner files: [`ex-apprunner/`](/Users/zuhairhussain/Desktop/bluetide-B-5-2/ex-apprunner)
+
 ## 🧪 Testing
 
 ### Frontend

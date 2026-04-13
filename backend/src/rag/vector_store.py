@@ -135,13 +135,19 @@ class VectorStore:
                         DocumentChunk.classification_level <= clearance
                     )
 
-                if allowed_cats is not None:
+                if allowed_cats is not None and allowed_cats:
                     # User can see chunks whose categories overlap with theirs,
                     # or public chunks (empty category_ids).
+                    # Use PostgreSQL && (array overlap) operator directly
+                    from sqlalchemy import cast, literal
+                    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+                    from sqlalchemy import Text as SA_Text
                     query = query.filter(
                         or_(
-                            DocumentChunk.category_ids.overlap(allowed_cats),
-                            DocumentChunk.category_ids == []  # public chunks
+                            DocumentChunk.category_ids.op('&&')(
+                                cast(literal(allowed_cats), PG_ARRAY(SA_Text))
+                            ),
+                            DocumentChunk.category_ids == cast(literal([]), PG_ARRAY(SA_Text)),  # public chunks
                         )
                     )
 
@@ -182,4 +188,57 @@ class VectorStore:
             return results
         except Exception as e:
             logger.error(f"Error performing vector search: {e}")
+            raise
+
+    def fetch_all_by_doc_ids(
+        self,
+        doc_ids: List[str],
+        tenant_id: str = None,
+        doc_filter: dict = None,
+    ) -> List[DocumentChunk]:
+        """Fetch ALL chunks for the given document IDs, no similarity filtering.
+
+        This bypasses semantic search entirely and retrieves every chunk
+        belonging to the specified documents.  Use this when the user needs
+        full-document context (e.g. 'list all orders across these docs').
+
+        Returns:
+            List of DocumentChunk objects ordered by (doc_id, chunk index).
+        """
+        try:
+            logger.info(f"fetch_all_by_doc_ids: fetching chunks for {len(doc_ids)} docs")
+            query = self.db.query(DocumentChunk).filter(
+                DocumentChunk.doc_id.in_(doc_ids)
+            )
+
+            if tenant_id:
+                query = query.filter(DocumentChunk.tenant_id == tenant_id)
+
+            # Apply RBAC policy filter
+            if doc_filter is not None:
+                clearance = doc_filter.get("clearance_level")
+                allowed_cats = doc_filter.get("allowed_category_ids")
+
+                if clearance is not None:
+                    query = query.filter(
+                        DocumentChunk.classification_level <= clearance
+                    )
+                if allowed_cats is not None and allowed_cats:
+                    from sqlalchemy import cast, literal
+                    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+                    from sqlalchemy import Text as SA_Text
+                    query = query.filter(
+                        or_(
+                            DocumentChunk.category_ids.op('&&')(
+                                cast(literal(allowed_cats), PG_ARRAY(SA_Text))
+                            ),
+                            DocumentChunk.category_ids == cast(literal([]), PG_ARRAY(SA_Text)),
+                        )
+                    )
+
+            results = query.order_by(DocumentChunk.doc_id, DocumentChunk.id).all()
+            logger.info(f"fetch_all_by_doc_ids: retrieved {len(results)} total chunks")
+            return results
+        except Exception as e:
+            logger.error(f"Error in fetch_all_by_doc_ids: {e}")
             raise

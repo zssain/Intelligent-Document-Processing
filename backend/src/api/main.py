@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.database.base import get_db
-from src.api.auth import get_current_user
+from src.api.auth import get_current_user, CurrentUser
 from src.api.routes import upload, content_understanding, rag, dashboard
 from src.api.routes import datalake_s3
 from src.api.routes import datalake_sharepoint
@@ -35,11 +35,20 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# ── Proxy headers middleware ─────────────────────────────────────
+# Behind App Runner / ALB, the app receives plain HTTP but the actual
+# client connection is HTTPS.  This middleware reads X-Forwarded-Proto &
+# X-Forwarded-For headers so that request.url_for() generates correct
+# https:// URLs (critical for OAuth redirect_uri).
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
+
 # Configure CORS
+# When CORS_ORIGINS='*', credentials must be disabled (browser requirement).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=settings.cors_allow_credentials,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=not settings.cors_allow_all and settings.cors_allow_credentials,
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
@@ -70,6 +79,28 @@ app.include_router(authenticated_router)
 
 # OAuth callback routes must be public (Google/Azure redirect here via browser)
 app.include_router(oauth_routes.public_router, prefix="/api/v1/auth", tags=["OAuth Callbacks"])
+
+
+# ---------------------------------------------------------------------------
+# User self-service endpoints (auth required, no admin role needed)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/users/me/permissions", tags=["Users"])
+async def get_my_permissions(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Return the current user's full permission set.
+
+    Used by the frontend to know which connectors/actions to show/hide.
+    """
+    return {
+        "uid": current_user.uid,
+        "role": current_user.role,
+        "is_admin": current_user.is_admin,
+        "clearance_level": current_user.clearance_level,
+        "allowed_category_ids": current_user.allowed_category_ids,
+        "allowed_sources": current_user.allowed_sources,
+        "source_permissions": current_user.source_permissions,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +144,10 @@ async def startup_event():
     import os
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.processed_dir, exist_ok=True)
-    os.makedirs("logs", exist_ok=True)
+    os.makedirs(settings.raw_dir, exist_ok=True)
+    os.makedirs(settings.normalized_dir, exist_ok=True)
+    os.makedirs(settings.vector_db_path, exist_ok=True)
+    os.makedirs(settings.logs_dir, exist_ok=True)
 
     logger.info("API started successfully")
 

@@ -61,7 +61,7 @@ from src.database.models import DocumentChunk
 from src.database.firestore_service import FirestoreService
 from src.processing import process_document
 from src.storage.s3_service import S3Service
-from src.api.auth import CurrentUser, get_current_user
+from src.api.auth import CurrentUser, get_current_user, require_source_permission
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ def _save_cursor(firestore_svc: FirestoreService, key: str, value: str) -> None:
 # ---------------------------------------------------------------------------
 # GET /gdrive/list
 # ---------------------------------------------------------------------------
-@router.get("/gdrive/list")
+@router.get("/gdrive/list", dependencies=[Depends(require_source_permission("gdrive", "can_view"))])
 async def list_gdrive_pdfs(
     folder_id: str = Query(
         default=None,
@@ -270,7 +270,7 @@ async def list_gdrive_pdfs(
 # ---------------------------------------------------------------------------
 # POST /gdrive/sync
 # ---------------------------------------------------------------------------
-@router.post("/gdrive/sync")
+@router.post("/gdrive/sync", dependencies=[Depends(require_source_permission("gdrive", "can_sync"))])
 async def sync_gdrive(
     folder_id: str = Query(default=None, description="Drive folder ID to sync"),
     limit: int = Query(default=None, ge=1, description="Max PDFs to process"),

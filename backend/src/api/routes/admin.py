@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from firebase_admin import auth as firebase_auth
 
 from config.settings import DEFAULT_TENANT_ID
-from src.api.auth import CurrentUser, get_current_user, require_role
+from src.api.auth import CurrentUser, get_current_user, require_role, SOURCES, ACTIONS
 from src.database.base import get_db
 from src.database.firestore_service import FirestoreService
 from src.utils.sync_policy import sync_doc_policy, sync_bulk_doc_policy
@@ -75,6 +75,22 @@ class BulkCategorizeRequest(BaseModel):
 
 class SoftDeleteRequest(BaseModel):
     reason: str = Field("", description="Reason for deletion")
+
+
+class SourceActionPermissions(BaseModel):
+    """Permissions for a single source."""
+    can_view: bool = False
+    can_download: bool = False
+    can_filter: bool = False
+    can_sync: bool = False
+    can_preview: bool = False
+
+
+class UpdateSourcePermissionsRequest(BaseModel):
+    """Full source_permissions map."""
+    source_permissions: Dict[str, SourceActionPermissions] = Field(
+        ..., description="Map of source name to action permissions"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -227,9 +243,64 @@ async def update_user_categories(
     }
 
 
+@router.put("/users/{uid}/source-permissions", summary="Update user source permissions")
+async def update_user_source_permissions(
+    uid: str,
+    body: UpdateSourcePermissionsRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Update per-source action permissions in Firestore."""
+    fs = _fs(current_user)
+
+    existing = fs.get_user(uid)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"User {uid} not found")
+
+    old_perms = existing.get("source_permissions", {})
+
+    # Validate source names
+    new_perms = {}
+    for source, actions in body.source_permissions.items():
+        if source not in SOURCES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown source '{source}'. Valid: {SOURCES}",
+            )
+        new_perms[source] = actions.model_dump()
+
+    # Update Firestore
+    fs.update_user(uid, {"source_permissions": new_perms})
+
+    # Audit log
+    fs.create_audit_event(
+        event_type="user.source_permissions_updated",
+        actor_uid=current_user.uid,
+        entity_type="user",
+        entity_id=uid,
+        before={"source_permissions": old_perms},
+        after={"source_permissions": new_perms},
+    )
+
+    return {
+        "status": "ok",
+        "uid": uid,
+        "source_permissions": new_perms,
+    }
+
+
 # ===================================================================
 #  CATEGORY MANAGEMENT
 # ===================================================================
+
+@router.get("/categories", summary="List all categories")
+async def list_categories(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """List all categories in the tenant."""
+    fs = _fs(current_user)
+    categories = fs.list_categories()
+    return {"categories": categories}
+
 
 @router.post("/categories", summary="Create a category", status_code=201)
 async def create_category(

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useIngestionMode, type IngestionMode } from '../ingestion-mode-context'
 import { useTranslation } from 'react-i18next'
+import { usePermissions } from '@/shared/hooks/usePermissions'
 
 // ---------------------------------------------------------------------------
 // Mode metadata
@@ -57,6 +58,20 @@ const MODE_META: Record<
 export function ModeSelector() {
   const { t } = useTranslation()
   const { activeMode, setMode } = useIngestionMode()
+  const { canViewSource, isAdmin } = usePermissions()
+
+  // Source key mapping: ingestion mode -> permission source name
+  const modeToSource: Record<IngestionMode, string> = {
+    s3: 's3',
+    sharepoint: 'sharepoint',
+    gdrive: 'gdrive',
+    upload: 'direct_upload',
+  }
+
+  // Filter modes based on permissions
+  const allowedModes = (['s3', 'sharepoint', 'gdrive', 'upload'] as IngestionMode[]).filter(
+    (mode) => isAdmin || canViewSource(modeToSource[mode])
+  )
 
   return (
     <div className="space-y-3">
@@ -67,7 +82,7 @@ export function ModeSelector() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {(['s3', 'sharepoint', 'gdrive', 'upload'] as IngestionMode[]).map((mode) => {
+        {allowedModes.map((mode) => {
           const meta = MODE_META[mode]
           const isActive = activeMode === mode
           const Icon = meta.icon

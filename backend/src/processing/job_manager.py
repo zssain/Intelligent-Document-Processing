@@ -184,11 +184,42 @@ def _download_s3_file(file_id: str) -> str:
     return s3.download_to_tempfile(file_id)
 
 
-def _download_sharepoint_file(file_id: str, filename: str = "") -> str:
-    """Download a SharePoint item by item_id."""
+def _download_sharepoint_file(file_id: str, filename: str = "", tenant_id: str = DEFAULT_TENANT_ID) -> str:
+    """Download a SharePoint item by item_id.
+
+    Resolves the drive from:
+      1. A linked source_connection in Firestore (via Connect via Link)
+      2. Falling back to env-var SHAREPOINT_SITE_ID / SHAREPOINT_SITE_URL
+    """
     from src.connectors.sharepoint_graph import GraphClient
+
     graph = GraphClient()
-    _site_id, drive_id = graph.get_site_and_drive()
+
+    # Try linked connection first (same logic as datalake_sharepoint sync)
+    drive_id = None
+    if not settings.sharepoint_site_id and not settings.sharepoint_site_url:
+        try:
+            from src.utils.firebase import get_firestore_client
+            db = get_firestore_client()
+            coll = (
+                db.collection("tenants")
+                .document(tenant_id)
+                .collection("source_connections")
+            )
+            for doc in coll.where("provider", "==", "sharepoint").stream():
+                d = doc.to_dict()
+                if d.get("status") == "connected" and d.get("site_hostname") and d.get("site_path"):
+                    site_url = f"{d['site_hostname']}:{d['site_path']}"
+                    site_id = graph.resolve_site_id(site_url)
+                    drive_id = graph.resolve_drive_id(site_id)
+                    logger.info("[job] Resolved SharePoint drive from linked connection: %s", drive_id)
+                    break
+        except Exception as exc:
+            logger.warning("[job] Could not resolve SharePoint from linked connections: %s", exc)
+
+    if not drive_id:
+        _site_id, drive_id = graph.get_site_and_drive()
+
     return graph.download_file(drive_id, file_id, filename=filename)
 
 
@@ -200,9 +231,9 @@ def _download_gdrive_file(file_id: str, filename: str = "") -> str:
 
 
 _DOWNLOADERS = {
-    "s3": lambda f: _download_s3_file(f["id"]),
-    "sharepoint": lambda f: _download_sharepoint_file(f["id"], f.get("name", "")),
-    "gdrive": lambda f: _download_gdrive_file(f["id"], f.get("name", "")),
+    "s3": lambda f, tid=DEFAULT_TENANT_ID: _download_s3_file(f["id"]),
+    "sharepoint": lambda f, tid=DEFAULT_TENANT_ID: _download_sharepoint_file(f["id"], f.get("name", ""), tenant_id=tid),
+    "gdrive": lambda f, tid=DEFAULT_TENANT_ID: _download_gdrive_file(f["id"], f.get("name", "")),
 }
 
 
@@ -255,7 +286,7 @@ async def run_job(tenant_id: str, job_id: str) -> None:
                     _update_file_status(tenant_id, job_id, idx, "processing")
 
                     # Download
-                    tmp_path = await asyncio.to_thread(downloader, file_rec)
+                    tmp_path = await asyncio.to_thread(downloader, file_rec, tenant_id)
 
                     # Build source metadata
                     source_metadata = {"source_key": file_rec["id"]}

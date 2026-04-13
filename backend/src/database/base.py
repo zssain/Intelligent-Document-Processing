@@ -8,8 +8,8 @@ engine = create_engine(
     settings.neon_connection_string,
     pool_pre_ping=True,       # test connections before use (detects dead Neon connections)
     pool_recycle=300,          # recycle connections every 5 min (Neon closes idle ones)
-    pool_size=5,               # keep 5 connections in pool
-    max_overflow=10,           # allow up to 10 extra connections under load
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
     connect_args={
         "connect_timeout": 10,
         # NOTE: Neon pooler rejects statement_timeout as a startup param.

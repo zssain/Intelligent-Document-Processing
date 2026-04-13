@@ -3,12 +3,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/shared/lib/api'
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react'
+import { auth as firebaseAuth } from '@/shared/lib/firebase'
 
 export const Route = createFileRoute('/admin/categories')({
-  beforeLoad: ({ context }) => {
-    const auth = (context as any).auth
-    if (!auth || auth.role !== 'org_admin') {
-      throw redirect({ to: '/' })
+  beforeLoad: async () => {
+    const user = firebaseAuth.currentUser
+    if (!user) {
+      throw redirect({ to: '/login' })
+    }
+    const tokenResult = await user.getIdTokenResult()
+    const role = tokenResult.claims.role as string | undefined
+    if (role !== 'org_admin') {
+      throw redirect({ to: '/documents' })
     }
   },
   component: AdminCategories,
@@ -30,37 +36,8 @@ function AdminCategories() {
   const { data: categories, isLoading } = useQuery<Category[]>({
     queryKey: ['categories'],
     queryFn: async () => {
-      // Mock data - replace with actual API call
-      return [
-        {
-          id: 'general',
-          name: 'General',
-          description: 'General documents accessible to all users',
-          color: '#3b82f6',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'finance',
-          name: 'Finance',
-          description: 'Financial documents and reports',
-          color: '#10b981',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'hr',
-          name: 'Human Resources',
-          description: 'HR and employee-related documents',
-          color: '#f59e0b',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'legal',
-          name: 'Legal',
-          description: 'Legal contracts and agreements',
-          color: '#8b5cf6',
-          createdAt: new Date().toISOString(),
-        },
-      ]
+      const { data } = await api.get<{ categories: Category[] }>('admin/categories')
+      return data.categories || []
     },
     refetchInterval: 60000,
   })

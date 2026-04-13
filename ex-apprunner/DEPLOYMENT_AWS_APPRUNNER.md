@@ -373,17 +373,17 @@ aws apprunner start-deployment --service-arn <FRONTEND_SERVICE_ARN> --region $AW
 
 ## Quick Deploy Script
 
-A helper script `deploy.sh` is provided at the repo root:
+A helper script `ex-apprunner/deploy-apprunner.sh` is provided in this archive:
 
 ```bash
 # Deploy backend only
-./deploy.sh backend
+./ex-apprunner/deploy-apprunner.sh backend
 
 # Deploy frontend only
-./deploy.sh frontend
+./ex-apprunner/deploy-apprunner.sh frontend
 
 # Deploy both
-./deploy.sh all
+./ex-apprunner/deploy-apprunner.sh all
 ```
 
 ---

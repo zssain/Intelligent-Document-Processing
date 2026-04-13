@@ -58,14 +58,20 @@ async def list_documents(
     if doc_filter is None:
         return {"documents": all_docs, "total": len(all_docs)}
 
-    # Regular user → filter by clearance + categories
+    # Regular user → filter by clearance + categories + allowed sources
     user_clearance: int = doc_filter["clearance_level"]
     user_cats: List[str] = doc_filter["allowed_category_ids"]
+    user_sources: List[str] = doc_filter.get("allowed_sources", [])
 
     visible: List[Dict[str, Any]] = []
     for doc in all_docs:
         doc_level = doc.get("classification_level", 0)
         doc_cats = doc.get("category_ids", [])
+        doc_source = doc.get("source", "direct_upload")
+
+        # Source access check
+        if user_sources and doc_source not in user_sources:
+            continue
 
         # Clearance check
         if doc_level > user_clearance:
@@ -78,6 +84,10 @@ async def list_documents(
         elif doc_cats and not user_cats:
             # Doc has categories but user has none → denied
             continue
+
+        # Add per-document action flags for frontend
+        doc["can_download"] = current_user.has_source_permission(doc_source, "can_download")
+        doc["can_preview"] = current_user.has_source_permission(doc_source, "can_preview")
 
         visible.append(doc)
 

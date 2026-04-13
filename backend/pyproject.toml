@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
+    "mangum>=0.19.0",
     "python-multipart>=0.0.6",
     # Pydantic
     "pydantic>=2.5.3",
@@ -16,6 +17,9 @@ dependencies = [
     "azure-core",
     # Azure Content Understanding
     "azure-ai-contentunderstanding",
+    # Local extraction stack
+    "docling",
+    "google-genai",
     # LangChain & OpenAI
     "langchain>=0.1.0",
     "langchain-openai>=0.0.5",

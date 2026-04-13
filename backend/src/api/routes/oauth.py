@@ -66,6 +66,42 @@ def _decrypt(value: str) -> str:
     return _get_fernet().decrypt(value.encode()).decode()
 
 
+def _build_callback_url(request: Request, route_name: str) -> str:
+    """Build the OAuth callback URL.
+
+    When ``settings.backend_public_url`` is set (recommended for Lambda / API
+    Gateway / direct backend hosting), the callback URL is built from the
+    backend's public base URL.
+
+    When ``settings.frontend_url`` is set, the
+    callback URL is constructed from the frontend base so that the browser
+    redirect from Google/Azure goes through the frontend's nginx proxy,
+    which forwards ``/api/v1/*`` to the backend.
+
+    This guarantees the redirect_uri matches what is registered in the Cloud
+    Console regardless of how the backend is addressed internally.
+
+    When ``frontend_url`` is empty (local dev), falls back to ``request.url_for``
+    with an http→https upgrade.
+    """
+    if settings.backend_public_url:
+        base = settings.backend_public_url.rstrip("/")
+        path = request.app.url_path_for(route_name)
+        return f"{base}{path}"
+
+    if settings.frontend_url:
+        base = settings.frontend_url.rstrip("/")
+        # route_name → URL path inside the FastAPI app
+        path = request.app.url_path_for(route_name)
+        return f"{base}{path}"
+
+    # Fallback: derive from the incoming request (force https behind proxy)
+    url = str(request.url_for(route_name))
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
+    return url
+
+
 # ── Firestore helpers ─────────────────────────────────────────────────────
 
 def _conn_ref(tenant_id: str, uid: str):
@@ -150,7 +186,7 @@ async def gdrive_connect(
         )
 
     # Build callback URL from the current request
-    callback_url = str(request.url_for("gdrive_callback"))
+    callback_url = _build_callback_url(request, "gdrive_callback")
 
     params = {
         "client_id": settings.gdrive_oauth_client_id,
@@ -185,7 +221,7 @@ async def gdrive_callback(
     tenant_id, uid = parts
 
     try:
-        callback_url = str(request.url_for("gdrive_callback"))
+        callback_url = _build_callback_url(request, "gdrive_callback")
         logger.info("GDrive callback – tenant=%s, uid=%s, redirect_uri=%s", tenant_id, uid, callback_url)
 
         async with httpx.AsyncClient() as client:
@@ -262,7 +298,7 @@ async def sharepoint_connect(
             detail="SharePoint OAuth is not configured (SHAREPOINT_OAUTH_CLIENT_ID / SECRET).",
         )
 
-    callback_url = str(request.url_for("sharepoint_callback"))
+    callback_url = _build_callback_url(request, "sharepoint_callback")
 
     params = {
         "client_id": settings.sharepoint_oauth_client_id,
@@ -296,7 +332,7 @@ async def sharepoint_callback(
         raise HTTPException(status_code=400, detail="Invalid OAuth state parameter")
     tenant_id, uid = parts
 
-    callback_url = str(request.url_for("sharepoint_callback"))
+    callback_url = _build_callback_url(request, "sharepoint_callback")
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(

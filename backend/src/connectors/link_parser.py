@@ -8,11 +8,15 @@ Google Drive:
     https://drive.google.com/drive/u/0/folders/<FOLDER_ID>
 
 SharePoint:
+    # Direct doc-library links
     https://<tenant>.sharepoint.com/sites/<SiteName>/Shared Documents/<FolderPath>
     https://<tenant>.sharepoint.com/sites/<SiteName>/Documents/Forms/AllItems.aspx?...&id=...
+    # Sharing links with /r/ or /s/ prefix  (/:f:/r/  /:f:/s/  /:w:/s/  etc.)
     https://<tenant>.sharepoint.com/:f:/r/sites/<SiteName>/Shared Documents/<FolderPath>
-    https://<tenant>.sharepoint.com/u:/r/sites/<SiteName>/SitePages/CollabHome.aspx
-    https://<tenant>.sharepoint.com/:f:/s/sites/<SiteName>/...
+    https://<tenant>.sharepoint.com/:f:/s/<SiteName>/<encoded_id>?e=...
+    https://<tenant>.sharepoint.com/:f:/s/sites/<SiteName>/<encoded_id>?e=...
+    # Short sharing links with /s/ (alias for /sites/)
+    https://<tenant>.sharepoint.com/:f:/s/<SiteName>/<id>
 """
 
 from __future__ import annotations
@@ -49,13 +53,24 @@ _GDRIVE_FOLDER_RE = re.compile(
 )
 
 # ── SharePoint patterns ──────────────────────────────────────────────────
-# Match SharePoint hostname and /sites/<SiteName>, allowing for sharing
-# prefixes like /:f:/r/, /u:/r/, /:w:/s/ etc. before /sites/.
+
+# Pattern 1: Full /sites/<SiteName> style URLs (with optional sharing prefixes)
 _SP_SITE_RE = re.compile(
     r"https?://([a-zA-Z0-9-]+\.sharepoint\.com)"   # hostname
     r"(?:/[a-z:]+)*"                                # optional sharing prefixes: /u:/r/, /:f:/r/, /:f:/s/ …
     r"(/sites/[^/?#]+)"                             # /sites/<SiteName>
 )
+
+# Pattern 2: Short sharing links — /:f:/s/<SiteName>/<encoded_id>
+# These use /s/ as a shorthand for /sites/ and include an encoded sharing ID
+# Example: https://tenant.sharepoint.com/:f:/s/BlueTide-Testing/IgC9Dx6...?e=UqiPF1
+_SP_SHARING_RE = re.compile(
+    r"https?://([a-zA-Z0-9-]+\.sharepoint\.com)"   # hostname
+    r"/:[a-z]:/s/"                                  # sharing prefix /:f:/s/, /:w:/s/, etc.
+    r"([^/?#]+)"                                    # site name (e.g. BlueTide-Testing)
+    r"(?:/([^?#]+))?"                               # optional encoded item ID
+)
+
 _SP_SHARED_DOCS_RE = re.compile(
     r"/Shared(?:%20|\s)Documents/(.+?)(?:\?|#|$)"
 )
@@ -80,7 +95,7 @@ def parse_drive_link(url: str) -> ParsedLink:
             original_url=url,
         )
 
-    # ── Try SharePoint ────────────────────────────────────────────────
+    # ── Try SharePoint (full /sites/ path) ────────────────────────────
     m = _SP_SITE_RE.search(url)
     if m:
         hostname = m.group(1)
@@ -105,10 +120,6 @@ def parse_drive_link(url: str) -> ParsedLink:
                     raw = raw[len(docs_prefix):]
                 item_path = raw.rstrip("/") or None
 
-        # If the URL points to a SitePages or other non-library path,
-        # item_path stays None → the connector will use the default
-        # document library root.
-
         return ParsedLink(
             provider=LinkProvider.SHAREPOINT,
             site_hostname=hostname,
@@ -116,6 +127,44 @@ def parse_drive_link(url: str) -> ParsedLink:
             item_path=item_path,
             original_url=url,
         )
+
+    # ── Try SharePoint sharing links with /s/ shorthand ───────────────
+    # These are common when users share a folder via "Copy link" in SharePoint.
+    # Format: https://tenant.sharepoint.com/:f:/s/SiteName/EncodedId?e=token
+    m = _SP_SHARING_RE.search(url)
+    if m:
+        hostname = m.group(1)
+        site_name = m.group(2)
+        site_path = f"/sites/{site_name}"
+        # The encoded ID in sharing links is opaque — we connect to the
+        # site root document library and list all files.
+        return ParsedLink(
+            provider=LinkProvider.SHAREPOINT,
+            site_hostname=hostname,
+            site_path=site_path,
+            item_path=None,
+            original_url=url,
+        )
+
+    # ── Generic sharepoint.com fallback ───────────────────────────────
+    # If the URL contains sharepoint.com but didn't match any pattern above,
+    # try to extract hostname and any /sites/ or /s/ reference.
+    sp_generic = re.search(r"https?://([a-zA-Z0-9-]+\.sharepoint\.com)", url)
+    if sp_generic:
+        hostname = sp_generic.group(1)
+
+        # Try to find /s/<SiteName> or /sites/<SiteName> anywhere in the URL
+        site_match = re.search(r"/(?:sites|s)/([^/?#]+)", url)
+        if site_match:
+            site_name = site_match.group(1)
+            site_path = f"/sites/{site_name}"
+            return ParsedLink(
+                provider=LinkProvider.SHAREPOINT,
+                site_hostname=hostname,
+                site_path=site_path,
+                item_path=None,
+                original_url=url,
+            )
 
     # ── Unrecognised ──────────────────────────────────────────────────
     raise HTTPException(
@@ -130,10 +179,10 @@ def parse_drive_link(url: str) -> ParsedLink:
                 "https://drive.google.com/drive/folders/<folder_id>",
                 "https://<tenant>.sharepoint.com/sites/<site>/Shared Documents/<folder>",
                 "https://<tenant>.sharepoint.com/:f:/r/sites/<site>/Shared Documents/<folder>",
+                "https://<tenant>.sharepoint.com/:f:/s/<site>/<sharing_id>",
             ],
         },
     )
 
 
 __all__ = ["parse_drive_link", "ParsedLink", "LinkProvider"]
-

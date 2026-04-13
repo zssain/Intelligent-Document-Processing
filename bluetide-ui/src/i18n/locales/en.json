@@ -54,7 +54,7 @@
         "intelligence_overview": "Intelligence Overview",
         "real_time_processing": "Real-time document processing and AI insights",
         "error_title": "Error Loading Dashboard",
-        "error_subtitle": "Please check if the mock data exists and try again.",
+        "error_subtitle": "Unable to load dashboard data. Please check your connection and try again.",
         "search_placeholder": "Ask AI Assistant anything about your documents...",
         "stats": {
             "total_documents": "Total Documents",

@@ -22,45 +22,55 @@ export const useDashboardData = () => {
     return useQuery<DashboardData>({
         queryKey: ['dashboard-data'],
         queryFn: async () => {
-            // 1. Fetch real stats and health in parallel (using authenticated api)
-            const [statsRes, healthRes, mockRes, s3Probe, spProbe, gdProbe] = await Promise.all([
-                api.get('dashboard/stats').then(r => r.data),
-                api.get('../health').then(r => r.data).catch(() => ({ database: 'unhealthy' })),
-                fetch('/data/dashboard-mock.json').then(r => r.json()),
+            // Fetch stats (with fallback), health, and connector probes in parallel
+            const [statsRes, healthRes, s3Probe, spProbe, gdProbe] = await Promise.all([
+                api.get('dashboard/stats').then(r => r.data).catch(() => ({
+                    total_documents: 0,
+                    documents_today: 0,
+                    documents_this_week: 0,
+                    total_chunks: 0,
+                    unique_entities: 0,
+                    connected_files: 0,
+                })),
+                // health endpoint is at the same prefix level
+                api.get('health').then(r => r.data).catch(() => ({ database: 'unknown' })),
                 silentProbe('datalake/s3/list?limit=1'),
                 silentProbe('datalake/sharepoint/list?limit=1'),
                 silentProbe('datalake/gdrive/list?limit=1'),
             ])
 
             return {
-                ...mockRes,
                 stats: {
-                    ...mockRes.stats,
                     totalIntelligenceBase: {
-                        value: statsRes.total_documents,
-                        docsToday: statsRes.documents_today,
-                        docsThisWeek: statsRes.documents_this_week,
+                        value: statsRes.total_documents ?? 0,
+                        docsToday: statsRes.documents_today ?? 0,
+                        docsThisWeek: statsRes.documents_this_week ?? 0,
                         label: 'Total Intelligence Base'
                     },
                     knowledgeFragments: {
-                        total: statsRes.total_chunks || 0,
-                        growth: '+12% this week' // Mocked growth for now
+                        total: statsRes.total_chunks ?? 0,
+                        growth: `${statsRes.documents_this_week ?? 0} docs this week`
                     },
                     intelligenceEntities: {
-                        total: statsRes.unique_entities || 0,
+                        total: statsRes.unique_entities ?? 0,
                         label: 'Unique Entities'
+                    },
+                    connectedFiles: {
+                        total: statsRes.connected_files ?? 0,
+                        label: 'Connected Files'
                     }
                 },
+                recentAIInsights: [],
                 systemHealth: {
-                    ...mockRes.systemHealth,
                     connectors: [
                         { name: 'Vector Database', status: healthRes.database === 'healthy' ? 'active' : 'failed' },
                         { name: 'S3 Datalake', status: s3Probe.ok ? 'active' : 'idle' },
                         { name: 'SharePoint', status: spProbe.ok ? 'active' : 'idle' },
                         { name: 'Google Drive', status: gdProbe.ok ? 'active' : 'idle' },
-                    ]
+                    ],
+                    vectorDbLatency: 0,
                 }
-            }
+            } as DashboardData
         },
     })
 }

@@ -154,6 +154,11 @@ class GoogleDriveClient:
         When *recursive* is ``True`` (default), subfolders are traversed
         depth-first so that files nested at any depth are included.
         """
+        GOOGLE_NATIVE_MIMES = {
+            "application/vnd.google-apps.document": ".pdf",
+            "application/vnd.google-apps.spreadsheet": ".pdf",
+            "application/vnd.google-apps.presentation": ".pdf",
+        }
         items: List[Dict[str, Any]] = []
         folders_to_scan = [folder_id]
 
@@ -189,9 +194,26 @@ class GoogleDriveClient:
                         continue
 
                     if supported_extensions:
-                        ext = os.path.splitext(f.get("name", ""))[1].lstrip(".").lower()
-                        if ext not in supported_extensions:
+                        name = f.get("name", "")
+                        ext = os.path.splitext(name)[1].lstrip(".").lower()
+                        # If it has a supported extension, keep it
+                        if ext in supported_extensions:
+                            items.append(f)
                             continue
+                        
+                        # If it's a native Google Doc, we'll export it to PDF, 
+                        # so treat it as if it has a .pdf extension
+                        if mime in GOOGLE_NATIVE_MIMES:
+                            if "pdf" in supported_extensions:
+                                # Append a fake .pdf extension to the name so the pipeline handles it correctly
+                                if not name.lower().endswith(".pdf"):
+                                    f["name"] = name + ".pdf"
+                                items.append(f)
+                            continue
+                        
+                        # Otherwise skip
+                        continue
+                    
                     items.append(f)
                 page_token = resp.get("nextPageToken")
                 if not page_token:
@@ -272,9 +294,23 @@ class GoogleDriveClient:
                 if file_meta.get("trashed"):
                     continue
                 if supported_extensions:
-                    ext = os.path.splitext(file_meta.get("name", ""))[1].lstrip(".").lower()
-                    if ext not in supported_extensions:
+                    name = file_meta.get("name", "")
+                    mime = file_meta.get("mimeType", "")
+                    ext = os.path.splitext(name)[1].lstrip(".").lower()
+                    
+                    is_native = mime in [
+                        "application/vnd.google-apps.document",
+                        "application/vnd.google-apps.spreadsheet",
+                        "application/vnd.google-apps.presentation",
+                    ]
+                    
+                    if ext not in supported_extensions and not (is_native and "pdf" in supported_extensions):
                         continue
+                    
+                    # If native, ensure it has .pdf suffix for the pipeline
+                    if is_native and not name.lower().endswith(".pdf"):
+                        file_meta["name"] = name + ".pdf"
+                        
                 parents = file_meta.get("parents") or []
                 if folder_id not in parents:
                     continue
@@ -303,15 +339,33 @@ class GoogleDriveClient:
         fd, tmp_path = tempfile.mkstemp(suffix=suffix or ".bin")
         os.close(fd)
         try:
-            request = self._service.files().get_media(
-                fileId=file_id, supportsAllDrives=True
-            )
+            # Check if it's a native Google Doc that needs exporting
+            res = self._service.files().get(fileId=file_id, fields="mimeType").execute()
+            mime = res.get("mimeType", "")
+            
+            GOOGLE_NATIVE_EXPORT = {
+                "application/vnd.google-apps.document": "application/pdf",
+                "application/vnd.google-apps.spreadsheet": "application/pdf",
+                "application/vnd.google-apps.presentation": "application/pdf",
+            }
+
+            if mime in GOOGLE_NATIVE_EXPORT:
+                export_mime = GOOGLE_NATIVE_EXPORT[mime]
+                logger.info("Exporting native Google Doc (%s) to %s", mime, export_mime)
+                request = self._service.files().export_media(
+                    fileId=file_id, mimeType=export_mime
+                )
+            else:
+                request = self._service.files().get_media(
+                    fileId=file_id, supportsAllDrives=True
+                )
+                
             with open(tmp_path, "wb") as fh:
                 downloader = MediaIoBaseDownload(fh, request, chunksize=10 * 1024 * 1024)
                 done = False
                 while not done:
                     _status, done = downloader.next_chunk()
-            logger.info("Downloaded Drive file %s -> %s", file_id, tmp_path)
+            logger.info("Downloaded/Exported Drive file %s -> %s", file_id, tmp_path)
             return tmp_path
         except Exception:
             if os.path.exists(tmp_path):

@@ -6,19 +6,51 @@ GET  /api/v1/jobs/{job_id} → poll per-file progress
 
 from __future__ import annotations
 
+import json
 import logging
+from functools import lru_cache
 from typing import Any, Dict, List
 
+import boto3
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from config.settings import DEFAULT_TENANT_ID
+from config.settings import DEFAULT_TENANT_ID, settings
 from src.api.auth import CurrentUser, get_current_user
 from src.processing.job_manager import create_job, get_job, run_job
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@lru_cache()
+def _get_sqs_client():
+    """Build an SQS client that works with either IAM role or explicit keys."""
+    client_kwargs: Dict[str, Any] = {
+        "region_name": settings.aws_region,
+    }
+    if settings.aws_access_key_id and settings.aws_secret_access_key:
+        client_kwargs["aws_access_key_id"] = settings.aws_access_key_id
+        client_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+    return boto3.client("sqs", **client_kwargs)
+
+
+def _dispatch_job(tenant_id: str, job_id: str, background_tasks: BackgroundTasks) -> str:
+    """Dispatch jobs through SQS when configured, otherwise fall back locally."""
+    if settings.job_queue_url:
+        message_kwargs: Dict[str, Any] = {
+            "QueueUrl": settings.job_queue_url,
+            "MessageBody": json.dumps({"tenant_id": tenant_id, "job_id": job_id}),
+        }
+        if settings.job_queue_url.endswith(".fifo"):
+            message_kwargs["MessageGroupId"] = tenant_id or DEFAULT_TENANT_ID
+            message_kwargs["MessageDeduplicationId"] = job_id
+        _get_sqs_client().send_message(**message_kwargs)
+        return "sqs"
+
+    background_tasks.add_task(run_job, tenant_id, job_id)
+    return "background_tasks"
 
 
 # ── Request / Response models ─────────────────────────────────────────────
@@ -61,8 +93,8 @@ async def process_files(
 ):
     """Queue selected files for ingestion.
 
-    Creates a Firestore job document and dispatches processing to a
-    background task.  Returns immediately with a ``job_id`` for polling.
+    Creates a Firestore job document and dispatches processing either to SQS
+    (recommended for Lambda) or to an in-process background task fallback.
     """
     if body.source_type not in ("s3", "sharepoint", "gdrive"):
         raise HTTPException(status_code=400, detail="source_type must be s3, sharepoint, or gdrive")
@@ -77,12 +109,11 @@ async def process_files(
         files=file_dicts,
     )
 
-    # Dispatch to background
-    background_tasks.add_task(run_job, tenant_id, job_id)
+    dispatch_mode = _dispatch_job(tenant_id, job_id, background_tasks)
 
     logger.info(
-        "Queued ingestion job %s (%d files, source=%s, user=%s)",
-        job_id, len(file_dicts), body.source_type, current_user.uid,
+        "Queued ingestion job %s (%d files, source=%s, user=%s, dispatch=%s)",
+        job_id, len(file_dicts), body.source_type, current_user.uid, dispatch_mode,
     )
 
     return ProcessResponse(

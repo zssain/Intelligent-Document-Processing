@@ -11,6 +11,7 @@ import {
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
 import { sourcesService } from '../services/sources.service'
+import { useIngestionMode } from '@/features/documents/ingestion-mode-context'
 import type { SourceConnection } from '../types'
 
 interface ConnectedSourcesProps {
@@ -22,11 +23,21 @@ export function ConnectedSources({ onBrowse }: ConnectedSourcesProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
-  const { data: connections = [], isLoading } = useQuery<SourceConnection[]>({
+  const { data: rawConnections = [], isLoading } = useQuery<SourceConnection[]>({
     queryKey: ['source-connections'],
     queryFn: () => sourcesService.listConnections(),
     staleTime: 30_000,
   })
+
+  const connections = Array.isArray(rawConnections) ? rawConnections : []
+
+  // Get active ingestion mode so we only show connections for the current tab
+  const { activeMode } = useIngestionMode()
+
+  // Filter connections to only show those matching the active mode
+  const filteredConnections = connections.filter(
+    (c) => c.provider === activeMode
+  )
 
   const disconnectMutation = useMutation({
     mutationFn: (id: string) => sourcesService.disconnectSource(id),
@@ -44,7 +55,7 @@ export function ConnectedSources({ onBrowse }: ConnectedSourcesProps) {
     )
   }
 
-  if (connections.length === 0) return null
+  if (filteredConnections.length === 0) return null
 
   const providerIcon = (provider: string) =>
     provider === 'gdrive' ? (
@@ -65,7 +76,7 @@ export function ConnectedSources({ onBrowse }: ConnectedSourcesProps) {
       </h4>
 
       <div className="grid gap-2">
-        {connections.map((conn) => (
+        {filteredConnections.map((conn) => (
           <div
             key={conn.connection_id}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/50 bg-card/30 hover:bg-card/60 transition-colors group"
@@ -129,7 +140,7 @@ export function ConnectedSources({ onBrowse }: ConnectedSourcesProps) {
                 title={t('documents.connection.disconnect', 'Disconnect')}
               >
                 {disconnectMutation.isPending &&
-                disconnectMutation.variables === conn.connection_id ? (
+                  disconnectMutation.variables === conn.connection_id ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Trash2 className="h-3.5 w-3.5" />
