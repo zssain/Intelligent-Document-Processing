@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Body
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from sqlalchemy.orm import Session
 from src.database.base import get_db
 from src.database.models import DocumentChunk
@@ -7,6 +7,7 @@ from src.database.firestore_service import FirestoreService
 from src.cu.client import ContentUnderstandingService
 from src.api.auth import CurrentUser, get_current_user, get_user_doc_filter
 from config.settings import settings, DEFAULT_TENANT_ID
+from src.connectors.sharepoint_graph import GraphClient
 import os
 import uuid
 import logging
@@ -38,6 +39,112 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize S3 service: {e}")
     s3_service = None
+
+
+def _document_matches_rbac(doc: Dict[str, Any], current_user: CurrentUser) -> bool:
+    """Apply the same clearance/category rules used by the list endpoint."""
+    doc_filter = get_user_doc_filter(current_user)
+    if doc_filter is None:
+        return True
+
+    user_clearance: int = doc_filter["clearance_level"]
+    user_cats: List[str] = doc_filter["allowed_category_ids"]
+    doc_level = doc.get("classification_level", 0)
+    doc_cats = doc.get("category_ids", [])
+
+    if doc_level > user_clearance:
+        return False
+    if doc_cats and user_cats:
+        return bool(set(doc_cats).intersection(user_cats))
+    if doc_cats and not user_cats:
+        return False
+    return True
+
+
+def _is_s3_url(url: str) -> bool:
+    return bool(url) and ".amazonaws.com/" in url
+
+
+def _permission_source_name(source_type: str) -> str:
+    return "direct_upload" if source_type == "local" else source_type
+
+
+def _repair_sharepoint_source_url(
+    doc: Dict[str, Any],
+    firestore_svc: FirestoreService,
+) -> str:
+    """Backfill an S3-backed source URL for older SharePoint documents."""
+    raw_url = (doc.get("s3_url") or "").strip()
+    if not raw_url or _is_s3_url(raw_url) or s3_service is None:
+        return raw_url
+
+    source_metadata = doc.get("source_metadata") or {}
+    drive_id = source_metadata.get("_sp_drive_id")
+    item_id = source_metadata.get("_sp_item_id")
+    if not drive_id or not item_id:
+        return raw_url
+
+    filename = doc.get("title") or f"{item_id}.pdf"
+    tmp_path = None
+    graph = None
+
+    try:
+        graph = GraphClient()
+        tmp_path = graph.download_file(drive_id, item_id, filename=filename)
+        repaired_url = s3_service.upload_pdf(tmp_path, filename)
+        if repaired_url:
+            firestore_svc.update_document(doc["id"], {"s3_url": repaired_url})
+            doc["s3_url"] = repaired_url
+            logger.info("Backfilled SharePoint preview source for doc %s", doc["id"])
+            return repaired_url
+    except Exception as exc:
+        logger.warning("Could not backfill SharePoint preview for doc %s: %s", doc.get("id"), exc)
+    finally:
+        if graph is not None:
+            try:
+                graph.close()
+            except Exception:
+                pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+    return raw_url
+
+
+def _build_document_urls(
+    doc: Dict[str, Any],
+    firestore_svc: FirestoreService | None = None,
+    *,
+    repair_sharepoint: bool = False,
+) -> Tuple[str, str]:
+    """Return (preview_url, open_url) for a document."""
+    source_type = (doc.get("source_type") or "local").lower()
+    source_url = (doc.get("s3_url") or "").strip()
+
+    if repair_sharepoint and source_type == "sharepoint":
+        if firestore_svc is not None:
+            source_url = _repair_sharepoint_source_url(doc, firestore_svc)
+
+    if not source_url:
+        return "", ""
+
+    if "drive.google.com" in source_url:
+        return source_url.replace("/view", "/preview"), source_url
+
+    if _is_s3_url(source_url) and s3_service:
+        presigned = s3_service.generate_presigned_url(source_url)
+        if presigned:
+            from urllib.parse import quote
+            preview_url = f"https://docs.google.com/gview?url={quote(presigned, safe='')}&embedded=true"
+            return preview_url, presigned
+
+    if source_type == "sharepoint":
+        return "", source_url
+
+    return source_url, source_url
 
 
 @router.post("/analyze")
@@ -150,24 +257,10 @@ async def list_cu_documents(
             limit=1000,
         )
 
-        # ── RBAC filtering ──────────────────────────────────────────
-        doc_filter = get_user_doc_filter(current_user)
-        if doc_filter is not None:
-            user_clearance: int = doc_filter["clearance_level"]
-            user_cats: List[str] = doc_filter["allowed_category_ids"]
-            visible: List[Dict[str, Any]] = []
-            for doc in documents:
-                doc_level = doc.get("classification_level", 0)
-                doc_cats = doc.get("category_ids", [])
-                if doc_level > user_clearance:
-                    continue
-                if doc_cats and user_cats:
-                    if not set(doc_cats).intersection(user_cats):
-                        continue
-                elif doc_cats and not user_cats:
-                    continue
-                visible.append(doc)
-            documents = visible
+        documents = [
+            doc for doc in documents
+            if _document_matches_rbac(doc, current_user)
+        ]
 
         # ── Map language code to display name ────────────────────────
         _LANG_MAP = {
@@ -242,20 +335,7 @@ async def list_cu_documents(
 
             lang_display = _LANG_MAP.get(lang_code, lang_code)
 
-            # ── Preview URL: build an embeddable preview link ─────────
-            raw_s3_url = doc.get("s3_url", "")
-            preview_url = ""
-            if raw_s3_url:
-                if "drive.google.com" in raw_s3_url:
-                    # Google Drive → embeddable preview
-                    preview_url = raw_s3_url.replace("/view", "/preview")
-                elif s3_service:
-                    presigned = s3_service.generate_presigned_url(raw_s3_url)
-                    if presigned:
-                        # Wrap in Google Docs Viewer for reliable iframe embedding
-                        # (raw S3 presigned URLs get blocked by X-Frame-Options)
-                        from urllib.parse import quote
-                        preview_url = f"https://docs.google.com/gview?url={quote(presigned, safe='')}&embedded=true"
+            preview_url, open_url = _build_document_urls(doc)
 
             doc_list.append({
                 "id": doc["id"],
@@ -268,6 +348,7 @@ async def list_cu_documents(
                 "source": doc.get("source_type", "local").lower(),
                 "confidence_percentage": confidence_pct,
                 "s3_url": preview_url,
+                "open_url": open_url,
                 "file_size_bytes": stats.get("file_size_bytes", 0),
                 "file_size_mb": f"{stats.get('file_size_bytes', 0) / (1024 * 1024):.2f} MB",
                 "category_ids": doc.get("category_ids", []),
@@ -282,6 +363,40 @@ async def list_cu_documents(
     except Exception as e:
         logger.error(f"Error listing documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/documents/{document_id}/preview")
+async def get_document_preview(
+    document_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Resolve preview/open URLs for a single document on demand."""
+    tenant_id = current_user.tenant_id or DEFAULT_TENANT_ID
+    firestore_svc = FirestoreService(tenant_id=tenant_id)
+    doc = firestore_svc.get_document(document_id)
+
+    if not doc or doc.get("status") != "active":
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not _document_matches_rbac(doc, current_user):
+        raise HTTPException(status_code=403, detail="You do not have access to this document")
+
+    doc_source = _permission_source_name((doc.get("source_type") or "local").lower())
+    if not current_user.has_source_permission(doc_source, "can_preview"):
+        raise HTTPException(status_code=403, detail="You do not have preview access for this source")
+
+    preview_url, open_url = _build_document_urls(
+        doc,
+        firestore_svc=firestore_svc,
+        repair_sharepoint=True,
+    )
+
+    return {
+        "preview_url": preview_url,
+        "open_url": open_url,
+    }
+
+
 @router.delete("/documents/batch")
 async def delete_documents_batch(request: BatchDeleteRequest, db: Session = Depends(get_db)):
     """Soft delete multiple documents and delete their chunks."""

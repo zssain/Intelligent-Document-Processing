@@ -137,6 +137,7 @@ export function DocumentProvider({ children }: DocumentProviderProps) {
             fingerprint: doc.id.slice(0, 8),
             uid: doc.id,
             s3Url: doc.s3_url,
+            openUrl: doc.open_url,
             fileSizeMb: doc.file_size_mb,
             classificationLevel: doc.classification_level ?? 0,
             categoryIds: doc.category_ids ?? [],

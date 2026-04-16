@@ -387,14 +387,26 @@ async def sync_sharepoint(
             # 4. Download ---------------------------------------------------
             tmp_path = graph.download_file(drive_id, item_id, filename=item_name)
 
+            # 4b. Upload SharePoint file to S3 for preview/download ----------
+            s3_pdf_url = None
+            _s3 = _get_s3()
+            if _s3:
+                try:
+                    s3_pdf_url = _s3.upload_pdf(tmp_path, item_name)
+                    logger.info("Uploaded SharePoint file to S3: %s", s3_pdf_url)
+                except Exception as s3_exc:
+                    logger.warning(
+                        "S3 upload of SharePoint file failed (non-fatal): %s", s3_exc
+                    )
+
             # 5-11. Centralized pipeline ------------------------------------
             result = process_document(
                 file_path=tmp_path,
                 filename=item_name,
                 db=db,
                 tenant_id=DEFAULT_TENANT_ID,
-                s3_service=_get_s3(),
-                s3_url=web_url,
+                s3_service=_s3,
+                s3_url=s3_pdf_url or web_url,
                 file_size_bytes=item_size,
                 source="sharepoint",
                 source_metadata={

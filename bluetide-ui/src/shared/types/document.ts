@@ -23,6 +23,7 @@ export interface Document {
     fingerprint: string
     uid: string
     s3Url?: string
+    openUrl?: string
     fileSizeMb?: string
     // Admin fields
     classificationLevel: number // 0-3

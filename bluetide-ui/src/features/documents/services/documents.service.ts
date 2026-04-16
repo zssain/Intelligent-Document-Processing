@@ -98,6 +98,15 @@ export const documentsService = {
     },
 
     /**
+     * Resolve preview/open URLs for a single document.
+     * Hits: GET /cu/documents/{id}/preview
+     */
+    getDocumentPreview: async (id: string) => {
+        const response = await api.get(`cu/documents/${id}/preview`)
+        return response.data
+    },
+
+    /**
      * Delete a single document.
      * Hits: DELETE /cu/documents/{id}
      */

@@ -21,12 +21,22 @@ import {
     Tag,
     Calendar,
     HardDrive,
+    Loader2,
 } from 'lucide-react'
 import { Button } from '@/shared/components/ui/button'
 import { Badge } from '@/shared/components/ui/badge'
+import { useQuery } from '@tanstack/react-query'
+import { documentsService } from '../services/documents.service'
 
 export function DocumentPreviewSheet() {
     const { selectedDocument, isPreviewOpen, setIsPreviewOpen } = useDocuments()
+
+    const { data: previewData, isLoading: isPreviewLoading } = useQuery({
+        queryKey: ['document-preview', selectedDocument?.id],
+        queryFn: () => documentsService.getDocumentPreview(selectedDocument!.id),
+        enabled: isPreviewOpen && !!selectedDocument?.id,
+        staleTime: 5 * 60 * 1000,
+    })
 
     if (!selectedDocument) return null
 
@@ -36,6 +46,8 @@ export function DocumentPreviewSheet() {
             : (selectedDocument.confidencePercentage ?? 0) >= 70
                 ? 'text-amber-500'
                 : 'text-rose-500'
+    const previewUrl = previewData?.preview_url || selectedDocument.s3Url
+    const openUrl = previewData?.open_url || selectedDocument.openUrl || previewUrl
 
     return (
         <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
@@ -57,22 +69,22 @@ export function DocumentPreviewSheet() {
                             </div>
                         </div>
                         <div className="flex items-center gap-2 pr-8">
-                            {selectedDocument.s3Url && (
+                            {openUrl && (
                                 <Button
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                    onClick={() => window.open(selectedDocument.s3Url, '_blank')}
+                                    onClick={() => window.open(openUrl, '_blank')}
                                 >
                                     <Download className="h-4 w-4" />
                                 </Button>
                             )}
-                            {selectedDocument.s3Url && (
+                            {openUrl && (
                                 <Button
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                    onClick={() => window.open(selectedDocument.s3Url, '_blank')}
+                                    onClick={() => window.open(openUrl, '_blank')}
                                 >
                                     <ExternalLink className="h-4 w-4" />
                                 </Button>
@@ -207,12 +219,12 @@ export function DocumentPreviewSheet() {
                                         <Layout className="h-3.5 w-3.5" />
                                         Document Preview
                                     </h3>
-                                    {selectedDocument.s3Url && (
+                                    {openUrl && (
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             className="gap-2 text-xs"
-                                            onClick={() => window.open(selectedDocument.s3Url, '_blank')}
+                                            onClick={() => window.open(openUrl, '_blank')}
                                         >
                                             <ExternalLink className="h-3 w-3" />
                                             Open in new tab
@@ -221,9 +233,19 @@ export function DocumentPreviewSheet() {
                                 </div>
 
                                 <div className="aspect-[3/4] rounded-lg border border-border/60 bg-background/50 flex flex-col items-center justify-center overflow-hidden relative group">
-                                    {selectedDocument.s3Url ? (
+                                    {isPreviewLoading ? (
+                                        <>
+                                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                                <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                                            </div>
+                                            <div className="space-y-1 text-center mt-4">
+                                                <p className="text-sm font-medium">Loading Preview</p>
+                                                <p className="text-xs text-muted-foreground">Preparing a viewable version of this document.</p>
+                                            </div>
+                                        </>
+                                    ) : previewUrl ? (
                                         <iframe
-                                            src={selectedDocument.s3Url}
+                                            src={previewUrl}
                                             className="w-full h-full border-none"
                                             title={selectedDocument.name}
                                             allow="autoplay"
